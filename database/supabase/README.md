@@ -1,90 +1,95 @@
-# 🍻 BotecoPro Database (Supabase)
+## 🍽️ **1. Recipe Management**
 
-Repositório oficial contendo **toda a infraestrutura de banco de dados** do projeto **BotecoPro**, organizada por *schemas* no Supabase.
+### Rules
 
-> **Objetivo:** Facilitar versionamento, revisão de código SQL e automação de deploy (CI/CD) usando Supabase CLI e GitHub Actions.
+* A **recipe** can be of type `dish`, `cocktail`, `combo`, etc.
+* Every recipe must have at least one ingredient.
+* The **suggested sale price** can be calculated as:
 
----
+  ```plaintext
+  total cost of ingredients + default profit margin + extras
+  ```
+* **Additions** must change the final order price.
 
-## 📂 Estrutura de Pastas
+### API
 
-```
-supabase/
-├── schemas/             # Um diretório por domínio de negócio
-│   ├── core/            # Catálogo de receitas / ingredientes
-│   │   ├── tables.sql
-│   │   ├── functions.sql
-│   │   ├── rls.sql
-│   │   └── README.md
-│   ├── order/           # Pedidos e comandas
-│   ├── invoice/         # Faturas
-│   ├── client/          # Clientes e mesas
-│   ├── inventory/       # Fornecedores
-│   └── staff/           # Funcionários
-│
-├── openapi/             # Contrato OpenAPI usado para gerar SDKs (Flutter, Web…)
-│   └── openapi.yaml
-└── README.md            # Este arquivo
-```
-
-Cada *schema* contém **quatro** arquivos‑chave:
-
-| Arquivo         | Função                                                       |
-| --------------- | ------------------------------------------------------------ |
-| `tables.sql`    | Criação de tabelas e FKs                                     |
-| `functions.sql` | Funções PL/pgSQL expostas como RPC (quando aplicável)        |
-| `rls.sql`       | Políticas **Row‑Level Security** e permissões                |
-| `README.md`     | Documentação do domínio (objetivo, fluxo, melhorias futuras) |
+* Endpoint: `GET /recipes/{id}` → return the recipe structure with ingredients and additions.
+* Endpoint: `POST /recipes/calculate-price` → return suggested price based on quantity and additions.
 
 ---
 
-## 🛠️ Como Usar
+## 🍷 **2. Alcoholic Drinks and Combos**
 
-### 1. Clonar & Inicializar Supabase CLI
+### Rules
 
-```bash
-git clone https://github.com/monynha/botecopro-db.git
-cd botecopro-db
-supabase init
-```
+* Cocktails can have multiple **alternative bases** (e.g. rum, gin).
+* Price may vary according to the selected base.
+* Each base should be defined as an **addition** to the base recipe (`Recipe_Addition`).
 
-### 2. Configurar `config.toml`
+### API
 
-```toml
-[db]
-schemas = ["public", "core", "order", "invoice", "client", "inventory", "staff", "auth"]
-```
-
-### 3. Deploy local ou remoto
-
-```bash
-supabase db push          # aplica tudo na instância alvo
-```
-
-### 4. Seed opcional
-
-Coloque scripts em `seed/` e execute conforme necessário.
+* Show a list of "bases" when the client selects the drink.
+* The final cocktail price changes automatically if a more expensive base is chosen.
 
 ---
 
-## 🚀 CI/CD com GitHub Actions
+## 📦 **3. Stock and Ingredients**
 
-Um workflow de exemplo (`.github/workflows/deploy-db.yml`) aplica migrações sempre que arquivos em `schemas/`, `views/` ou `seed/` forem alterados.
+### Rules
 
-```yaml
-uses: supabase/setup-cli@v1
-run: supabase db push
-```
+* Each order **consumes** ingredients proportionally to the sold quantity.
+* The `Ingredient` stock must be updated automatically after closing the order.
+* Notifications must be issued for ingredients below the minimum level (`stock_minimum`).
 
-Adicione o token `SUPABASE_ACCESS_TOKEN` em *Settings → Secrets → Actions*.
+### API / backend
+
+* Procedure: `sp_AtualizarEstoquePorPedido(@order_id)`
+* View: `vw_IngredientesAbaixoEstoqueMinimo`
+* Endpoint: `GET /inventory/alerts`
 
 ---
 
-## 🗺️ Roadmap (Banco)
+## 🧾 **4. Orders and Billing**
 
-* [ ] Adicionar módulo de **Work Hours** no schema `staff`
-* [ ] Função `core.calculate_recipe_cost()`
-* [ ] Triggers de auditoria global
-* [ ] Tests automatizados com `pgTAP`
+### Rules
 
-Contribuições são bem‑vindas! Abra um *issue* ou *pull request* ✨
+* An order may contain multiple items, each with optional additions.
+* The final invoice value = sum of items + sum of additions + taxes.
+* Taxes may differ for food and drinks.
+
+### API
+
+* `POST /orders` → create order
+* `GET /orders/{id}` → view order details
+* `POST /invoice/generate` → calculate and generate invoice
+* `GET /invoice/{id}` → view total with breakdown (subtotals, taxes, extras)
+
+---
+
+## 👨‍🍳 **5. Employees and Work Control**
+
+### Rules
+
+* Each employee has an hourly rate and is linked to a career plan.
+* Hours are logged monthly, with extras accounted for.
+* Login and password are managed separately in `Employee_Login`.
+
+### API
+
+* `POST /login` → authentication
+* `POST /workhours` → log hours
+* `GET /payroll/{month}/{year}` → estimated remuneration calculation
+
+---
+
+## 📲 **6. Tabs and Service**
+
+> To be discussed later, but initial idea:
+
+* A **tab** represents an active table session (it can contain multiple orders).
+* Allows orders in stages without closing the bill.
+* At the end, all tab orders are consolidated into the invoice.
+
+---
+
+Should these rules be written directly in the database as *structural comments* or should we keep creating *stored procedures* and endpoints that implement them?
