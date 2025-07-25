@@ -1,3 +1,4 @@
+# Supabase config
 [db]
 shadow_schema = "_shadow"
 schemas = [
