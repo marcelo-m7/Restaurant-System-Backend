@@ -1,0 +1,5 @@
+[
+  {"prato_id": 1, "nome_prato": "Feijoada", "total_vendas": 120},
+  {"prato_id": 2, "nome_prato": "Pastel", "total_vendas": 85},
+  {"prato_id": 3, "nome_prato": "Moqueca", "total_vendas": 65}
+]

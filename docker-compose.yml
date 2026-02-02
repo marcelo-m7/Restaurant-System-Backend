@@ -1,29 +1,30 @@
-version: "3.8"
-
+version: '3.8'
 services:
-  sqlserver:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - BOTECOPRO_DB_DSN
+    ports:
+      - "8000:8000"
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_API_TOKEN
+    ports:
+      - "5173:4173"
+    depends_on:
+      - backend
+  db:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: sqlserver
-    restart: unless-stopped
-
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_PID: "Express"
-      MSSQL_SA_PASSWORD: "${SA_PASSWORD}"
-      TZ: "Europe/Lisbon"
-
+      SA_PASSWORD: "YourStrong!Passw0rd"
+    volumes:
+      - ./backend/src/db/sql:/docker-entrypoint-initdb.d
     ports:
       - "1433:1433"
-
-    volumes:
-      - sqlserver_data:/var/opt/mssql
-
-    healthcheck:
-      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-volumes:
-  sqlserver_data:
-    driver: local
