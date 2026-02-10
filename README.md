@@ -1,72 +1,137 @@
-# Restaurant System Backend - Multi-tenant Foundation
+# Restaurant System Backend - Multi-tenant Runnable Baseline
 
-This repository now serves as the **architecture and implementation foundation** for a two-microservice platform:
+This repository now contains a runnable two-service baseline:
 
-1. **Portal Service (Reflex/Python)**
-   - Tenant onboarding
-   - User and access bootstrap
-   - Database connection registration and validation
-2. **Database Service (Python + SQLite in-memory for now)**
-   - Multi-tenant data API
-   - Tenant-scoped persistence and domain flows
+- `portal-service`: Reflex app + FastAPI routes for tenant registration and tenant-aware proxying.
+- `database-service`: FastAPI service with in-memory SQLite and tenant-scoped CRUD.
 
-> Current status: this repository is still documentation-heavy and does not yet contain the full service source code. The goal of this baseline is to make implementation decisions explicit and reduce ambiguity before code expansion.
-
-## Why this cleanup was necessary
-
-The previous repository context mixed references to React + SQL Server artifacts and restaurant POS domain drafts. That created architectural drift relative to the current target (Reflex Portal + tenant-aware Database service). The updated docs establish:
-
-- Clear service boundaries
-- Tenant lifecycle and ownership
-- Database connection strategy
-- Domain model and flow contracts
-- A recommended scalable directory layout
-
-## Repository structure (target)
+## Project structure
 
 ```text
 .
-├─ services/
-│  ├─ portal/                     # Reflex app (tenant onboarding + admin UI)
-│  │  ├─ app/
-│  │  │  ├─ ui/                   # Reflex pages/components/state
-│  │  │  ├─ domain/               # Portal use-cases + entities
-│  │  │  ├─ infrastructure/       # Adapters: HTTP clients, auth providers
-│  │  │  └─ config/
-│  │  ├─ tests/
-│  │  └─ pyproject.toml
-│  └─ database/
-│     ├─ app/
-│     │  ├─ api/                  # REST/HTTP handlers
-│     │  ├─ domain/               # Core entities + business rules
-│     │  ├─ persistence/          # Repositories + DB adapters
-│     │  ├─ infrastructure/       # Logging, telemetry, integration adapters
-│     │  └─ config/
-│     ├─ migrations/
-│     ├─ tests/
-│     └─ pyproject.toml
-├─ docs/
-│  ├─ decisions/                  # ADRs
-│  ├─ diagrams/
-│  └─ legacy/                     # Legacy exploratory docs kept for traceability
-├─ README.md
-├─ ARCHITECTURE.md
-├─ SETUP.md
-└─ .env.example
+├── services/
+│   ├── portal_service/
+│   │   └── main.py
+│   └── database_service/
+│       └── main.py
+├── tests/
+│   ├── test_database_service.py
+│   └── test_portal_integration.py
+├── ARCHITECTURE.md
+├── README.md
+└── pyproject.toml
 ```
 
-## Core documentation
+## API contracts
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - service boundaries, lifecycle, flows, risks, and technical debt.
-- [SETUP.md](./SETUP.md) - local setup and execution strategy for the future implementation.
+Tenant propagation convention:
+- Header: `X-Tenant-ID`
+- Required for CRUD on entity endpoints.
 
-## Legacy artifacts
+Error format:
 
-Earlier exploratory domain notes were preserved under `docs/` and should be considered **draft references only** until migrated into the new service-specific implementation docs.
+```json
+{
+  "error": "string_code",
+  "detail": "human_readable_message"
+}
+```
 
-## Next implementation milestones
+Entity endpoints (database-service, proxied by portal-service under `/api`):
+- `categories`
+- `products`
+- `tables`
+- `tabs`
+- `orders`
+- `order-items`
+- `payments`
 
-1. Scaffold `services/portal` Reflex app with health endpoint and onboarding screen.
-2. Scaffold `services/database` API with tenant-aware middleware and in-memory SQLite adapter.
-3. Add contract tests between Portal and Database service for tenant registration.
-4. Introduce ADRs for tenancy model and migration path to persistent storage.
+CRUD pattern:
+- `POST /{entity}`
+- `GET /{entity}`
+- `GET /{entity}/{id}`
+- `PUT /{entity}/{id}`
+- `DELETE /{entity}/{id}`
+
+## Local setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+```
+
+## Run services
+
+Terminal 1 (database-service):
+
+```bash
+uvicorn services.database_service.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+Terminal 2 (portal-service API + Reflex backend):
+
+```bash
+DATABASE_SERVICE_URL=http://127.0.0.1:8001 uvicorn services.portal_service.main:api --host 0.0.0.0 --port 8000 --reload
+```
+
+Optional Reflex UI dev server:
+
+```bash
+reflex run
+```
+
+## Example flow
+
+### 1) Create tenant in portal-service
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/tenants \
+  -H 'content-type: application/json' \
+  -d '{"name":"Tenant A"}'
+```
+
+Capture `tenant_id` from response.
+
+### 2) Tenant-scoped category CRUD via portal-service proxy
+
+```bash
+TENANT_ID="<tenant-id-from-previous-step>"
+
+curl -s -X POST http://127.0.0.1:8000/api/categories \
+  -H "X-Tenant-ID: ${TENANT_ID}" \
+  -H 'content-type: application/json' \
+  -d '{"name":"Burgers"}'
+
+curl -s http://127.0.0.1:8000/api/categories \
+  -H "X-Tenant-ID: ${TENANT_ID}"
+```
+
+### 3) Cross-tenant read is blocked
+
+```bash
+curl -s http://127.0.0.1:8000/api/categories/1 \
+  -H "X-Tenant-ID: some-other-tenant"
+```
+
+Expected response:
+
+```json
+{"error":"unknown_tenant","detail":"Tenant not registered in portal"}
+```
+
+## Testing
+
+```bash
+pytest -q
+```
+
+Tests cover:
+- Positive isolation for tenant A and B
+- Negative cross-tenant read/update/delete
+- CRUD lifecycle across core entities
+- Integration flow portal-service -> database-service
+
+## Next step: persistence
+
+To move beyond in-memory SQLite, switch to a persistent connection URL and add migrations while preserving tenant predicates in all queries.
