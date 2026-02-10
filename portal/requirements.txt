@@ -1,0 +1,10 @@
+
+reflex==0.8.17
+reflex-clerk-api @ git+https://github.com/reflex-dev/reflex-clerk-api.git
+notion-client
+supabase
+fastapi
+postgrest
+httpx
+cairosvg
+Pillow
