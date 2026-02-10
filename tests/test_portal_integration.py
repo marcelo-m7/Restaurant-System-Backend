@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any, cast
-
 import httpx
 from fastapi.testclient import TestClient
 
@@ -14,7 +12,7 @@ def test_portal_forwards_tenant_context_to_database_service() -> None:
     db_transport = httpx.ASGITransport(app=db_app)
 
     portal = create_portal_app(db_base_url="http://db", transport=db_transport)
-    client = TestClient(cast(Any, portal).api)
+    client = TestClient(portal)
 
     tenant = client.post("/api/tenants", json={"name": "Tenant One"}).json()["data"]
     headers = {"X-Tenant-ID": tenant["id"]}
@@ -35,7 +33,7 @@ def test_missing_tenant_header_is_blocked_on_proxy() -> None:
     portal = create_portal_app(
         db_base_url="http://db", transport=httpx.ASGITransport(app=create_db_app())
     )
-    client = TestClient(cast(Any, portal).api)
+    client = TestClient(portal)
 
     response = client.get("/api/products")
     assert response.status_code == 400
@@ -46,7 +44,7 @@ def test_portal_rejects_invalid_json_body_for_proxy_post() -> None:
     portal = create_portal_app(
         db_base_url="http://db", transport=httpx.ASGITransport(app=create_db_app())
     )
-    client = TestClient(cast(Any, portal).api)
+    client = TestClient(portal)
 
     response = client.post(
         "/api/products",
