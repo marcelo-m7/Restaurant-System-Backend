@@ -49,11 +49,55 @@ class TenantRegistry:
 
 
 class PortalState(rx.State):
-    message: str = "Restaurant portal-service baseline running"
+    message: str = "Restaurant portal-service running"
+
+
+class CrudPageState(rx.State):
+    unit_name: str = ""
+    area_name: str = ""
+    table_name: str = ""
+    product_name: str = ""
+    payment_amount: str = ""
 
 
 portal_app = rx.App()
-portal_app.add_page(lambda: rx.vstack(rx.heading("Portal Service"), rx.text(PortalState.message)), route="/")
+
+
+def home() -> rx.Component:
+    return rx.vstack(
+        rx.heading("Restaurant Portal"),
+        rx.text(PortalState.message),
+        rx.hstack(
+            rx.link("Units", href="/units"),
+            rx.link("Areas", href="/areas"),
+            rx.link("Tables", href="/tables"),
+            rx.link("Products", href="/products"),
+            rx.link("Orders", href="/orders"),
+            rx.link("Payments", href="/payments"),
+            rx.link("Tabs", href="/tabs"),
+            spacing="4",
+        ),
+    )
+
+
+def simple_form_page(title: str, field_name: str) -> rx.Component:
+    return rx.vstack(
+        rx.heading(title),
+        rx.text("Simple management screen for domain flow testing."),
+        rx.input(placeholder=field_name),
+        rx.button("Submit"),
+        rx.link("Back", href="/"),
+    )
+
+
+portal_app.add_page(home, route="/")
+portal_app.add_page(lambda: simple_form_page("Units", "Unit name"), route="/units")
+portal_app.add_page(lambda: simple_form_page("Areas", "Area name"), route="/areas")
+portal_app.add_page(lambda: simple_form_page("Tables", "Table name"), route="/tables")
+portal_app.add_page(lambda: simple_form_page("Products", "Product name"), route="/products")
+portal_app.add_page(lambda: simple_form_page("Orders", "Order details"), route="/orders")
+portal_app.add_page(lambda: simple_form_page("Payments", "Payment amount"), route="/payments")
+portal_app.add_page(lambda: simple_form_page("Tabs", "Tab action"), route="/tabs")
 api = portal_app.api
 
 api.state.config = PortalConfig()
@@ -103,30 +147,19 @@ async def get_tenant(tenant_id: str) -> TenantRecord:
     return tenant
 
 
-@api.api_route("/api/{entity}", methods=["GET", "POST"])
-async def proxy_collection(entity: str, request: Request, tenant_id: str = Depends(resolve_tenant)) -> Any:
-    client = get_http_client()
-    async with client:
-        if request.method == "GET":
-            response = await client.get(f"/{entity}", headers={TENANT_HEADER: tenant_id})
-        else:
-            payload = await request.json()
-            response = await client.post(f"/{entity}", headers={TENANT_HEADER: tenant_id}, json=payload)
-    return JSONResponse(status_code=response.status_code, content=response.json() if response.content else None)
-
-
-@api.api_route("/api/{entity}/{item_id}", methods=["GET", "PUT", "DELETE"])
-async def proxy_resource(entity: str, item_id: int, request: Request, tenant_id: str = Depends(resolve_tenant)) -> Any:
+@api.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_any(path: str, request: Request, tenant_id: str = Depends(resolve_tenant)) -> Any:
     client = get_http_client()
     async with client:
         headers = {TENANT_HEADER: tenant_id}
-        if request.method == "GET":
-            response = await client.get(f"/{entity}/{item_id}", headers=headers)
-        elif request.method == "PUT":
-            payload = await request.json()
-            response = await client.put(f"/{entity}/{item_id}", headers=headers, json=payload)
-        else:
-            response = await client.delete(f"/{entity}/{item_id}", headers=headers)
+        body = await request.body()
+        response = await client.request(
+            method=request.method,
+            url=f"/{path}",
+            headers=headers,
+            params=request.query_params,
+            content=body if body else None,
+        )
 
     if response.status_code == 204:
         return JSONResponse(status_code=204, content=None)
