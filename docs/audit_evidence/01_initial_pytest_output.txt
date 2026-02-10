@@ -1,0 +1,15 @@
+
+==================================== ERRORS ====================================
+______________ ERROR collecting tests/test_portal_integration.py _______________
+tests/test_portal_integration.py:5: in <module>
+    from services.portal_service import main as portal_main
+services/portal_service/main.py:101: in <module>
+    api = portal_app.api
+E   AttributeError: 'App' object has no attribute 'api'. Did you mean: '_api'?
+------------------------------- Captured stdout --------------------------------
+Warning: Reflex support for Python 3.10 is deprecated and will be removed in a 
+future release. Please upgrade to Python 3.11 or higher for continued support.
+=========================== short test summary info ============================
+ERROR tests/test_portal_integration.py - AttributeError: 'App' object has no ...
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.91s

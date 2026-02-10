@@ -1,0 +1,546 @@
+UP035 [*] Import from `collections.abc` instead: `Iterator`
+ --> services/database_service/main.py:7:1
+  |
+5 | from contextlib import contextmanager
+6 | from datetime import datetime, timezone
+7 | from typing import Any, Iterator, Literal
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |
+9 | from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+  |
+help: Import from `collections.abc`
+
+E501 Line too long (125 > 120)
+   --> services/database_service/main.py:228:121
+    |
+226 | def get_tenant_id(x_tenant_id: str | None = Header(default=None, alias=TenantHeader)) -> str:
+227 |     if not x_tenant_id:
+228 |         raise HTTPException(status_code=400, detail={"error": "missing_tenant", "detail": f"{TenantHeader} header required"})
+    |                                                                                                                         ^^^^^
+229 |     return x_tenant_id
+    |
+
+E501 Line too long (123 > 120)
+   --> services/database_service/main.py:241:121
+    |
+239 | def recalc_tab(conn: sqlite3.Connection, tenant_id: str, tab_id: int) -> dict[str, Any]:
+240 |     tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (tab_id, tenant_id), "Tab not found")
+241 |     unit = fetch_one(conn, "SELECT * FROM units WHERE id=? AND tenant_id=?", (tab["unit_id"], tenant_id), "Unit not found")
+    |                                                                                                                         ^^^
+242 |
+243 |     subtotal = conn.execute(
+    |
+
+E501 Line too long (133 > 120)
+   --> services/database_service/main.py:342:121
+    |
+341 |     @app.put("/{entity}/{item_id}")
+342 |     def update_entity(entity: str, item_id: int, payload: dict[str, Any], tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
+    |                                                                                                                         ^^^^^^^^^^^^^
+343 |         definition = ENTITY_TABLES.get(entity)
+344 |         if not definition:
+    |
+
+E501 Line too long (128 > 120)
+   --> services/database_service/main.py:354:121
+    |
+352 | …         cursor = conn.execute(f"UPDATE {table_name} SET {assignments} WHERE id = ? AND tenant_id = ?", values)
+353 | …         if cursor.rowcount == 0:
+354 | …             raise HTTPException(status_code=404, detail={"error": "resource_not_found", "detail": "No resource for tenant"})
+    |                                                                                                                       ^^^^^^^^
+355 | …         row = fetch_one(conn, f"SELECT * FROM {table_name} WHERE id = ? AND tenant_id = ?", (item_id, tenant_id), "No resource for …
+356 | …     return dict(row)
+    |
+
+E501 Line too long (143 > 120)
+   --> services/database_service/main.py:355:121
+    |
+353 | …
+354 | …r": "resource_not_found", "detail": "No resource for tenant"})
+355 | …RE id = ? AND tenant_id = ?", (item_id, tenant_id), "No resource for tenant")
+    |                                                        ^^^^^^^^^^^^^^^^^^^^^^^
+356 | …
+    |
+
+E501 Line too long (128 > 120)
+   --> services/database_service/main.py:367:121
+    |
+365 |             cursor = conn.execute(f"DELETE FROM {table_name} WHERE id = ? AND tenant_id = ?", (item_id, tenant_id))
+366 |             if cursor.rowcount == 0:
+367 |                 raise HTTPException(status_code=404, detail={"error": "resource_not_found", "detail": "No resource for tenant"})
+    |                                                                                                                         ^^^^^^^^
+368 |         return Response(status_code=status.HTTP_204_NO_CONTENT)
+    |
+
+E501 Line too long (135 > 120)
+   --> services/database_service/main.py:373:121
+    |
+371 | …get_tenant_id)) -> dict[str, Any]:
+372 | …
+373 | … id=? AND tenant_id=?", (payload.table_id, tenant_id), "Table not found")
+    |                                                            ^^^^^^^^^^^^^^^
+374 | …
+375 | …le_id=? AND status='open'",
+    |
+
+E501 Line too long (133 > 120)
+   --> services/database_service/main.py:379:121
+    |
+377 |             ).fetchone()
+378 |             if open_tab_row:
+379 |                 raise HTTPException(status_code=409, detail={"error": "tab_already_open", "detail": "Table already has an open tab"})
+    |                                                                                                                         ^^^^^^^^^^^^^
+380 |             cursor = conn.execute(
+381 |                 "INSERT INTO tabs(tenant_id, unit_id, table_id, status, opened_at, due_amount) VALUES (?, ?, ?, 'open', ?, 0)",
+    |
+
+E501 Line too long (127 > 120)
+   --> services/database_service/main.py:381:121
+    |
+379 |                 raise HTTPException(status_code=409, detail={"error": "tab_already_open", "detail": "Table already has an open tab"})
+380 |             cursor = conn.execute(
+381 |                 "INSERT INTO tabs(tenant_id, unit_id, table_id, status, opened_at, due_amount) VALUES (?, ?, ?, 'open', ?, 0)",
+    |                                                                                                                         ^^^^^^^
+382 |                 (tenant_id, payload.unit_id, payload.table_id, utcnow()),
+383 |             )
+    |
+
+E501 Line too long (137 > 120)
+   --> services/database_service/main.py:384:121
+    |
+382 | …utcnow()),
+383 | …
+384 | …RE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Tab not found"))
+    |                                                           ^^^^^^^^^^^^^^^^^
+385 | …
+386 | …
+    |
+
+E501 Line too long (128 > 120)
+   --> services/database_service/main.py:389:121
+    |
+387 |     def create_order(payload: OrderIn, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
+388 |         with app.state.db.session() as conn:
+389 |             tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found")
+    |                                                                                                                         ^^^^^^^^
+390 |             if tab["status"] != "open":
+391 |                 raise HTTPException(status_code=409, detail={"error": "tab_closed", "detail": "Cannot add order to closed tab"})
+    |
+
+E501 Line too long (128 > 120)
+   --> services/database_service/main.py:391:121
+    |
+389 |             tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found")
+390 |             if tab["status"] != "open":
+391 |                 raise HTTPException(status_code=409, detail={"error": "tab_closed", "detail": "Cannot add order to closed tab"})
+    |                                                                                                                         ^^^^^^^^
+392 |             cursor = conn.execute(
+393 |                 "INSERT INTO orders(tenant_id, tab_id, status) VALUES (?, ?, 'draft')",
+    |
+
+E501 Line too long (141 > 120)
+   --> services/database_service/main.py:396:121
+    |
+394 | …
+395 | …
+396 | …RE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Order not found"))
+    |                                                         ^^^^^^^^^^^^^^^^^^^^^
+397 | …
+398 | …
+    |
+
+E501 Line too long (136 > 120)
+   --> services/database_service/main.py:401:121
+    |
+399 | … = Depends(get_tenant_id)) -> dict[str, Any]:
+400 | …
+401 | …E id=? AND tenant_id=?", (payload.order_id, tenant_id), "Order not found")
+    |                                                            ^^^^^^^^^^^^^^^^
+402 | …
+403 | …error": "order_immutable", "detail": "Only draft orders can receive items"})
+    |
+
+E501 Line too long (138 > 120)
+   --> services/database_service/main.py:403:121
+    |
+401 | … id=? AND tenant_id=?", (payload.order_id, tenant_id), "Order not found")
+402 | …
+403 | …rror": "order_immutable", "detail": "Only draft orders can receive items"})
+    |                                                           ^^^^^^^^^^^^^^^^^^
+404 | …HERE id=? AND tenant_id=?", (payload.product_id, tenant_id), "Product not found")
+405 | …
+    |
+
+E501 Line too long (144 > 120)
+   --> services/database_service/main.py:404:121
+    |
+402 | …
+403 | …r": "order_immutable", "detail": "Only draft orders can receive items"})
+404 | …E id=? AND tenant_id=?", (payload.product_id, tenant_id), "Product not found")
+    |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^
+405 | …
+406 | …
+    |
+
+E501 Line too long (134 > 120)
+   --> services/database_service/main.py:407:121
+    |
+405 |             cursor = conn.execute(
+406 |                 """
+407 |                 INSERT INTO order_items(tenant_id, order_id, product_id, product_name_snapshot, unit_price_snapshot, quantity, status)
+    |                                                                                                                         ^^^^^^^^^^^^^^
+408 |                 VALUES (?, ?, ?, ?, ?, ?, 'active')
+409 |                 """,
+    |
+
+E501 Line too long (145 > 120)
+   --> services/database_service/main.py:412:121
+    |
+410 | …roduct["name"], product["price"], payload.quantity),
+411 | …
+412 | …WHERE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Item not found"))
+    |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+413 | …
+414 | …
+    |
+
+E501 Line too long (128 > 120)
+   --> services/database_service/main.py:417:121
+    |
+415 |     def send_order(order_id: int, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
+416 |         with app.state.db.session() as conn:
+417 |             order = fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found")
+    |                                                                                                                         ^^^^^^^^
+418 |             if order["status"] != "draft":
+419 |                 raise HTTPException(status_code=409, detail={"error": "order_immutable", "detail": "Order already sent"})
+    |
+
+E501 Line too long (121 > 120)
+   --> services/database_service/main.py:419:121
+    |
+417 |             order = fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found")
+418 |             if order["status"] != "draft":
+419 |                 raise HTTPException(status_code=409, detail={"error": "order_immutable", "detail": "Order already sent"})
+    |                                                                                                                         ^
+420 |             item_count = conn.execute(
+421 |                 "SELECT COUNT(*) FROM order_items WHERE order_id=? AND tenant_id=? AND status!='void'",
+    |
+
+E501 Line too long (122 > 120)
+   --> services/database_service/main.py:425:121
+    |
+423 |             ).fetchone()[0]
+424 |             if item_count == 0:
+425 |                 raise HTTPException(status_code=409, detail={"error": "order_empty", "detail": "Cannot send empty order"})
+    |                                                                                                                         ^^
+426 |             conn.execute("UPDATE orders SET status='sent', sent_at=? WHERE id=? AND tenant_id=?", (utcnow(), order_id, tenant_id))
+427 |             return dict(fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found"))
+    |
+
+E501 Line too long (130 > 120)
+   --> services/database_service/main.py:426:121
+    |
+424 |             if item_count == 0:
+425 |                 raise HTTPException(status_code=409, detail={"error": "order_empty", "detail": "Cannot send empty order"})
+426 |             conn.execute("UPDATE orders SET status='sent', sent_at=? WHERE id=? AND tenant_id=?", (utcnow(), order_id, tenant_id))
+    |                                                                                                                         ^^^^^^^^^^
+427 |             return dict(fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found"))
+    |
+
+E501 Line too long (133 > 120)
+   --> services/database_service/main.py:427:121
+    |
+425 |                 raise HTTPException(status_code=409, detail={"error": "order_empty", "detail": "Cannot send empty order"})
+426 |             conn.execute("UPDATE orders SET status='sent', sent_at=? WHERE id=? AND tenant_id=?", (utcnow(), order_id, tenant_id))
+427 |             return dict(fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found"))
+    |                                                                                                                         ^^^^^^^^^^^^^
+428 |
+429 |     @app.post("/order-items/{item_id}/void")
+    |
+
+E501 Line too long (130 > 120)
+   --> services/database_service/main.py:432:121
+    |
+430 |     def void_item(item_id: int, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
+431 |         with app.state.db.session() as conn:
+432 |             item = fetch_one(conn, "SELECT * FROM order_items WHERE id=? AND tenant_id=?", (item_id, tenant_id), "Item not found")
+    |                                                                                                                         ^^^^^^^^^^
+433 |             if item["status"] == "void":
+434 |                 return dict(item)
+    |
+
+E501 Line too long (136 > 120)
+   --> services/database_service/main.py:435:121
+    |
+433 | …
+434 | …
+435 | …E id=? AND tenant_id=?", (item["order_id"], tenant_id), "Order not found")
+    |                                                            ^^^^^^^^^^^^^^^^
+436 | …
+437 | …error": "invalid_state", "detail": "Only sent order items can be voided"})
+    |
+
+E501 Line too long (136 > 120)
+   --> services/database_service/main.py:437:121
+    |
+435 | …E id=? AND tenant_id=?", (item["order_id"], tenant_id), "Order not found")
+436 | …
+437 | …error": "invalid_state", "detail": "Only sent order items can be voided"})
+    |                                                            ^^^^^^^^^^^^^^^^
+438 | …, voided_at=? WHERE id=? AND tenant_id=?", (utcnow(), item_id, tenant_id))
+439 | …
+    |
+
+E501 Line too long (136 > 120)
+   --> services/database_service/main.py:438:121
+    |
+436 | …
+437 | …error": "invalid_state", "detail": "Only sent order items can be voided"})
+438 | …, voided_at=? WHERE id=? AND tenant_id=?", (utcnow(), item_id, tenant_id))
+    |                                                            ^^^^^^^^^^^^^^^^
+439 | …
+440 | …tems WHERE id=? AND tenant_id=?", (item_id, tenant_id), "Item not found"))
+    |
+
+E501 Line too long (136 > 120)
+   --> services/database_service/main.py:440:121
+    |
+438 | …, voided_at=? WHERE id=? AND tenant_id=?", (utcnow(), item_id, tenant_id))
+439 | …
+440 | …tems WHERE id=? AND tenant_id=?", (item_id, tenant_id), "Item not found"))
+    |                                                            ^^^^^^^^^^^^^^^^
+441 | …
+442 | …
+    |
+
+E501 Line too long (128 > 120)
+   --> services/database_service/main.py:450:121
+    |
+448 |     def create_payment(payload: PaymentIn, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
+449 |         with app.state.db.session() as conn:
+450 |             tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found")
+    |                                                                                                                         ^^^^^^^^
+451 |             if tab["status"] != "open":
+452 |                 raise HTTPException(status_code=409, detail={"error": "tab_closed", "detail": "Cannot pay a closed tab"})
+    |
+
+E501 Line too long (121 > 120)
+   --> services/database_service/main.py:452:121
+    |
+450 |             tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found")
+451 |             if tab["status"] != "open":
+452 |                 raise HTTPException(status_code=409, detail={"error": "tab_closed", "detail": "Cannot pay a closed tab"})
+    |                                                                                                                         ^
+453 |             recalc = recalc_tab(conn, tenant_id, payload.tab_id)
+454 |             if payload.amount > recalc["due_amount"]:
+    |
+
+E501 Line too long (132 > 120)
+   --> services/database_service/main.py:455:121
+    |
+453 |             recalc = recalc_tab(conn, tenant_id, payload.tab_id)
+454 |             if payload.amount > recalc["due_amount"]:
+455 |                 raise HTTPException(status_code=409, detail={"error": "payment_exceeds_due", "detail": "Amount exceeds due amount"})
+    |                                                                                                                         ^^^^^^^^^^^^
+456 |             cursor = conn.execute(
+457 |                 "INSERT INTO payments(tenant_id, tab_id, amount, method, status) VALUES (?, ?, ?, ?, 'pending')",
+    |
+
+E501 Line too long (145 > 120)
+   --> services/database_service/main.py:460:121
+    |
+458 | ….method),
+459 | …
+460 | …RE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Payment not found"))
+    |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+461 | …
+462 | …
+    |
+
+E501 Line too long (136 > 120)
+   --> services/database_service/main.py:465:121
+    |
+463 | …nds(get_tenant_id)) -> dict[str, Any]:
+464 | …
+465 | …WHERE id=? AND tenant_id=?", (payment_id, tenant_id), "Payment not found")
+    |                                                            ^^^^^^^^^^^^^^^^
+466 | …
+467 | …
+    |
+
+E501 Line too long (134 > 120)
+   --> services/database_service/main.py:468:121
+    |
+466 | …     if payment["status"] == "paid":
+467 | …         return dict(payment)
+468 | …     conn.execute("UPDATE payments SET status='paid', paid_at=? WHERE id=? AND tenant_id=?", (utcnow(), payment_id, tenant_id))
+    |                                                                                                                   ^^^^^^^^^^^^^^
+469 | …     recalc_tab(conn, tenant_id, payment["tab_id"])
+470 | …     return dict(fetch_one(conn, "SELECT * FROM payments WHERE id=? AND tenant_id=?", (payment_id, tenant_id), "Payment not found"))
+    |
+
+E501 Line too long (139 > 120)
+   --> services/database_service/main.py:470:121
+    |
+468 | …d_at=? WHERE id=? AND tenant_id=?", (utcnow(), payment_id, tenant_id))
+469 | …
+470 | …WHERE id=? AND tenant_id=?", (payment_id, tenant_id), "Payment not found"))
+    |                                                          ^^^^^^^^^^^^^^^^^^^
+471 | …
+472 | …
+    |
+
+E501 Line too long (122 > 120)
+   --> services/database_service/main.py:483:121
+    |
+481 |             ).fetchone()[0]
+482 |             if pending_orders > 0:
+483 |                 raise HTTPException(status_code=409, detail={"error": "pending_orders", "detail": "Tab has draft orders"})
+    |                                                                                                                         ^^
+484 |             if tab["due_amount"] > 0:
+485 |                 raise HTTPException(status_code=409, detail={"error": "amount_due", "detail": "Tab has remaining due amount"})
+    |
+
+E501 Line too long (126 > 120)
+   --> services/database_service/main.py:485:121
+    |
+483 |                 raise HTTPException(status_code=409, detail={"error": "pending_orders", "detail": "Tab has draft orders"})
+484 |             if tab["due_amount"] > 0:
+485 |                 raise HTTPException(status_code=409, detail={"error": "amount_due", "detail": "Tab has remaining due amount"})
+    |                                                                                                                         ^^^^^^
+486 |             conn.execute("UPDATE tabs SET status='closed', closed_at=? WHERE id=? AND tenant_id=?", (utcnow(), tab_id, tenant_id))
+487 |             return dict(fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (tab_id, tenant_id), "Tab not found"))
+    |
+
+E501 Line too long (130 > 120)
+   --> services/database_service/main.py:486:121
+    |
+484 |             if tab["due_amount"] > 0:
+485 |                 raise HTTPException(status_code=409, detail={"error": "amount_due", "detail": "Tab has remaining due amount"})
+486 |             conn.execute("UPDATE tabs SET status='closed', closed_at=? WHERE id=? AND tenant_id=?", (utcnow(), tab_id, tenant_id))
+    |                                                                                                                         ^^^^^^^^^^
+487 |             return dict(fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (tab_id, tenant_id), "Tab not found"))
+    |
+
+E501 Line too long (127 > 120)
+   --> services/database_service/main.py:487:121
+    |
+485 |                 raise HTTPException(status_code=409, detail={"error": "amount_due", "detail": "Tab has remaining due amount"})
+486 |             conn.execute("UPDATE tabs SET status='closed', closed_at=? WHERE id=? AND tenant_id=?", (utcnow(), tab_id, tenant_id))
+487 |             return dict(fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (tab_id, tenant_id), "Tab not found"))
+    |                                                                                                                         ^^^^^^^
+488 |
+489 |     return app
+    |
+
+E501 Line too long (126 > 120)
+   --> services/portal_service/main.py:104:121
+    |
+102 |     tenant_id = request.headers.get(TENANT_HEADER)
+103 |     if not tenant_id:
+104 |         raise HTTPException(status_code=400, detail={"error": "missing_tenant", "detail": f"{TENANT_HEADER} header required"})
+    |                                                                                                                         ^^^^^^
+105 |     if not request.app.state.tenants.get(tenant_id):
+106 |         raise HTTPException(status_code=403, detail={"error": "unknown_tenant", "detail": "Tenant not registered in portal"})
+    |
+
+E501 Line too long (125 > 120)
+   --> services/portal_service/main.py:106:121
+    |
+104 |         raise HTTPException(status_code=400, detail={"error": "missing_tenant", "detail": f"{TENANT_HEADER} header required"})
+105 |     if not request.app.state.tenants.get(tenant_id):
+106 |         raise HTTPException(status_code=403, detail={"error": "unknown_tenant", "detail": "Tenant not registered in portal"})
+    |                                                                                                                         ^^^^^
+107 |     request.state.tenant_id = tenant_id
+108 |     return tenant_id
+    |
+
+E501 Line too long (133 > 120)
+  --> tests/test_database_service.py:8:121
+   |
+ 6 | def setup_domain(client: TestClient, headers: dict[str, str]) -> dict[str, int]:
+ 7 |     category = client.post("/categories", headers=headers, json={"name": "Main"}).json()
+ 8 |     product = client.post("/products", headers=headers, json={"name": "Burger", "price": 10.0, "category_id": category["id"]}).json()
+   |                                                                                                                         ^^^^^^^^^^^^^
+ 9 |     unit = client.post(
+10 |         "/units",
+   |
+
+E501 Line too long (134 > 120)
+  --> tests/test_database_service.py:39:121
+   |
+37 |     assert send_without_items.status_code == 409
+38 |
+39 |     item = client.post("/order-items", headers=headers, json={"order_id": order_id, "product_id": setup["product_id"], "quantity": 2})
+   |                                                                                                                         ^^^^^^^^^^^^^^
+40 |     assert item.status_code == 201
+41 |     assert item.json()["product_name_snapshot"] == "Burger"
+   |
+
+E501 Line too long (124 > 120)
+  --> tests/test_database_service.py:85:121
+   |
+83 |     setup2 = setup_domain(client, {TenantHeader: "tenant-b"})
+84 |     tenant_b = {TenantHeader: "tenant-b"}
+85 |     first = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+   |                                                                                                                         ^^^^
+86 |     assert first.status_code == 201
+87 |     second = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+   |
+
+E501 Line too long (125 > 120)
+  --> tests/test_database_service.py:87:121
+   |
+85 |     first = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+86 |     assert first.status_code == 201
+87 |     second = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+   |                                                                                                                         ^^^^^
+88 |     assert second.status_code == 409
+   |
+
+E501 Line too long (127 > 120)
+   --> tests/test_database_service.py:100:121
+    |
+ 98 |     setup = setup_domain(client, tenant_a)
+ 99 |
+100 |     tab = client.post("/tabs/open", headers=tenant_a, json={"unit_id": setup["unit_id"], "table_id": setup["table_id"]}).json()
+    |                                                                                                                         ^^^^^^^
+101 |     denied = client.post("/orders", headers=tenant_b, json={"tab_id": tab["id"]})
+102 |     assert denied.status_code == 404
+    |
+
+E501 Line too long (135 > 120)
+   --> tests/test_database_service.py:116:121
+    |
+114 | …
+115 | …
+116 | …"unit_id": setup["unit_id"], "table_id": setup["table_id"]}).json()["id"]
+    |                                                            ^^^^^^^^^^^^^^^
+117 | …
+118 | …tab_id": tab_id})
+    |
+
+E501 Line too long (136 > 120)
+  --> tests/test_portal_integration.py:37:121
+   |
+35 | …e_enabled": False, "service_fee_percent": 0},
+36 | …
+37 | …, json={"unit_id": unit_id, "name": "Hall", "sort_order": 0}).json()["id"]
+   |                                                            ^^^^^^^^^^^^^^^^
+38 | …
+39 | …
+   |
+
+E501 Line too long (136 > 120)
+  --> tests/test_portal_integration.py:50:121
+   |
+48 | …
+49 | …
+50 | …ers, json={"order_id": order_id, "product_id": product_id, "quantity": 1})
+   |                                                            ^^^^^^^^^^^^^^^^
+51 | …
+52 | …headers=headers)
+   |
+
+Found 50 errors.
+[*] 1 fixable with the `--fix` option.
