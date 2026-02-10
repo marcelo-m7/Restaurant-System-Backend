@@ -1,59 +1,39 @@
-# Restaurant System Backend - Multi-tenant Runnable Baseline
+# Restaurant System Backend
 
-This repository now contains a runnable two-service baseline:
+Multi-tenant runnable baseline with a **portal-service** and a **database-service**.
 
-- `portal-service`: Reflex app + FastAPI routes for tenant registration and tenant-aware proxying.
-- `database-service`: FastAPI service with in-memory SQLite and tenant-scoped CRUD.
-
-## Project structure
+## Repository structure
 
 ```text
 .
 ├── services/
 │   ├── portal_service/
-│   │   └── main.py
 │   └── database_service/
-│       └── main.py
+├── docs/
 ├── tests/
-│   ├── test_database_service.py
-│   └── test_portal_integration.py
 ├── ARCHITECTURE.md
-├── README.md
-└── pyproject.toml
+├── DOMAIN.md
+├── SETUP.md
+└── README.md
 ```
 
-## API contracts
+## Services
 
-Tenant propagation convention:
-- Header: `X-Tenant-ID`
-- Required for CRUD on entity endpoints.
+- **portal-service**: tenant registry + tenant-aware `/api/*` proxy + Reflex app shell.
+- **database-service**: tenant-scoped CRUD API for domain entities.
 
-Error format:
+## Environment variables
 
-```json
-{
-  "error": "string_code",
-  "detail": "human_readable_message"
-}
-```
+Create a `.env` from `.env.example` and adjust values:
 
-Entity endpoints (database-service, proxied by portal-service under `/api`):
-- `categories`
-- `products`
-- `tables`
-- `tabs`
-- `orders`
-- `order-items`
-- `payments`
+- `DATABASE_SERVICE_URL`: URL used by portal-service to reach database-service.
+- `PORTAL_HOST`, `PORTAL_PORT`: portal-service bind host and port.
+- `DATABASE_HOST`, `DATABASE_PORT`: database-service bind host and port.
+- `DATABASE_URL`: storage DSN (in-memory SQLite by default).
 
-CRUD pattern:
-- `POST /{entity}`
-- `GET /{entity}`
-- `GET /{entity}/{id}`
-- `PUT /{entity}/{id}`
-- `DELETE /{entity}/{id}`
+## Run locally
 
-## Local setup
+Install dependencies:
 
 ```bash
 python -m venv .venv
@@ -61,29 +41,28 @@ source .venv/bin/activate
 pip install -e .[dev]
 ```
 
-## Run services
-
-Terminal 1 (database-service):
+Start database-service:
 
 ```bash
 uvicorn services.database_service.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Terminal 2 (portal-service API + Reflex backend):
+Start portal-service API:
 
 ```bash
-DATABASE_SERVICE_URL=http://127.0.0.1:8001 uvicorn services.portal_service.main:api --host 0.0.0.0 --port 8000 --reload
+DATABASE_SERVICE_URL=http://127.0.0.1:8001 \
+uvicorn services.portal_service.main:api --host 0.0.0.0 --port 8000 --reload
 ```
 
-Optional Reflex UI dev server:
+Optional Reflex UI:
 
 ```bash
 reflex run
 ```
 
-## Example flow
+## Quickstart (tenant + CRUD + isolation)
 
-### 1) Create tenant in portal-service
+1) Create a tenant through portal-service:
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/tenants \
@@ -91,12 +70,10 @@ curl -s -X POST http://127.0.0.1:8000/tenants \
   -d '{"name":"Tenant A"}'
 ```
 
-Capture `tenant_id` from response.
-
-### 2) Tenant-scoped category CRUD via portal-service proxy
+2) Use the returned `tenant_id` in proxy CRUD requests:
 
 ```bash
-TENANT_ID="<tenant-id-from-previous-step>"
+TENANT_ID="<tenant-id>"
 
 curl -s -X POST http://127.0.0.1:8000/api/categories \
   -H "X-Tenant-ID: ${TENANT_ID}" \
@@ -107,31 +84,47 @@ curl -s http://127.0.0.1:8000/api/categories \
   -H "X-Tenant-ID: ${TENANT_ID}"
 ```
 
-### 3) Cross-tenant read is blocked
+3) Demonstrate cross-tenant isolation:
 
 ```bash
 curl -s http://127.0.0.1:8000/api/categories/1 \
   -H "X-Tenant-ID: some-other-tenant"
 ```
 
-Expected response:
+Expected error:
 
 ```json
 {"error":"unknown_tenant","detail":"Tenant not registered in portal"}
 ```
 
-## Testing
+## Health endpoints
+
+- `GET /health` on portal-service
+- `GET /health` on database-service
+
+Both currently return:
+
+```json
+{"status":"ok"}
+```
+
+## Error contract
+
+Application-level errors follow:
+
+```json
+{
+  "error": "string_code",
+  "detail": "human_readable_message"
+}
+```
+
+See `ARCHITECTURE.md` for common codes and expected status mapping.
+
+## Tests
+
+Run all tests:
 
 ```bash
 pytest -q
 ```
-
-Tests cover:
-- Positive isolation for tenant A and B
-- Negative cross-tenant read/update/delete
-- CRUD lifecycle across core entities
-- Integration flow portal-service -> database-service
-
-## Next step: persistence
-
-To move beyond in-memory SQLite, switch to a persistent connection URL and add migrations while preserving tenant predicates in all queries.
