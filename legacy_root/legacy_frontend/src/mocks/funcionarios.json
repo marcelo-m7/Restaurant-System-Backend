@@ -1,5 +1,0 @@
-[
-  {"funcionario_id": 1, "nome_funcionario": "João Silva", "total_horas_normais": 160, "total_horas_extra": 10},
-  {"funcionario_id": 2, "nome_funcionario": "Maria Souza", "total_horas_normais": 150, "total_horas_extra": 5},
-  {"funcionario_id": 3, "nome_funcionario": "Pedro Santos", "total_horas_normais": 170, "total_horas_extra": 15}
-]
