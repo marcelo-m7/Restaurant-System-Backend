@@ -4,7 +4,7 @@ Este repositório agrupa os códigos e documentos do Boteco Pro, um sistema de g
 
 ## Estrutura do Repositório
 
-```
+```bash
 frontend/
   docs/   - guias e especificações da interface web
   src/    - implementação em React
