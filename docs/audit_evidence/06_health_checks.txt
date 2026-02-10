@@ -1,0 +1,4 @@
+DB health:
+{"status":"ok"}
+Portal health:
+{"status":"ok"}

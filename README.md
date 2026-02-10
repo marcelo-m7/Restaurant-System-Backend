@@ -1,38 +1,85 @@
-# Boteco Pro Repository
+# Restaurant System Backend
 
-Este repositório agrupa os códigos e documentos do Boteco Pro, um sistema de gestão para restaurantes. O projeto está dividido em frontend (React) e backend (SQL Server + API), além de documentação complementar.
+A two-microservice, multi-tenant backend for restaurant domain workflows.
 
-## Estrutura do Repositório
+## What this system is
 
-```bash
-frontend/
-  docs/   - guias e especificações da interface web
-  src/    - implementação em React
-backend/
-  docs/   - modelagem do banco e descrição da API
-  src/
-    db/   - scripts SQL e arquivos relacionados ao banco de dados
-    api/  - implementação da API (a ser desenvolvida)
-docs/      - outros documentos do projeto
+This repository contains:
+- **database-service** (FastAPI + SQLite in-memory): tenant-scoped CRUD and restaurant workflow endpoints.
+- **portal-service** (FastAPI proxy + Reflex pages): tenant registry and `/api/*` proxy to database-service.
+
+## Architecture summary
+
+```text
+Client -> portal-service (/api/* + /tenants) -> database-service
+                                       |
+                                       +-> forwards X-Tenant-ID
 ```
 
-O banco de dados está sendo executado localmente em **Microsoft SQL Server** e ficará disponível para a API em `localhost`. Futuramente poderá ser movido para a Google Cloud, utilizando scripts de conexão na pasta `backend/src/db`.
+Each database row stores `tenant_id`. All domain queries are filtered by tenant.
 
-O frontend consome a API para obter ou persistir dados. Enquanto a implementação da API não estiver pronta, o frontend utiliza arquivos mockados para simular as respostas.
-
-## Documentação Complementar
-
-- `backend/docs/` contém detalhes de modelagem e dos objetos (Views, SPs etc.).
-- `docs/MVP.md` descreve o plano de implementação inicial do frontend.
-«
-Consulte cada pasta para informações específicas de instalação e execução.
-
-## Docker Compose
-
-Para executar todo o projeto via contêineres utilize:
+## Quickstart
 
 ```bash
-docker compose up
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
 ```
 
-A API lê a string de conexão do SQL Server a partir da variável `BOTECOPRO_DB_DSN`. Defina-a em um arquivo `.env` na raiz ou exporte antes de iniciar os serviços. O frontend pode receber `VITE_API_BASE_URL` e `VITE_API_TOKEN` para apontar para o backend desejado. Consulte os arquivos `.env.example` em cada pasta para valores de exemplo.
+Run database-service:
+
+```bash
+uvicorn services.database_service.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+Run portal-service:
+
+```bash
+DATABASE_SERVICE_URL=http://127.0.0.1:8001 \
+uvicorn services.portal_service.main:api --host 0.0.0.0 --port 8000 --reload
+```
+
+Run tests and quality checks:
+
+```bash
+pytest -q
+ruff check .
+ruff format .
+mypy .
+pytest --cov=services --cov=tests --cov-report=term-missing
+```
+
+## Multi-tenancy (`X-Tenant-ID`)
+
+- Required for all domain endpoints (`/categories`, `/orders`, `/payments`, etc.).
+- Tenant must be registered in portal first for proxied calls.
+- Missing header returns `400`.
+- Unknown tenant in portal returns `403`.
+- Cross-tenant access returns `404` on database-service resources.
+
+## Common workflow example
+
+```bash
+# 1) Register tenant in portal
+curl -sX POST http://127.0.0.1:8000/tenants \
+  -H 'content-type: application/json' \
+  -d '{"name":"Demo Tenant"}'
+
+# 2) Use tenant header for all /api calls
+curl -sX POST http://127.0.0.1:8000/api/categories \
+  -H 'content-type: application/json' \
+  -H 'X-Tenant-ID: <tenant_id>' \
+  -d '{"name":"Main"}'
+
+# 3) Health checks
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8001/health
+```
+
+## Additional docs
+
+- [SETUP.md](SETUP.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md)
+- [docs/API.md](docs/API.md)
+- [docs/TESTING.md](docs/TESTING.md)
+- [docs/audit_evidence/](docs/audit_evidence/)
