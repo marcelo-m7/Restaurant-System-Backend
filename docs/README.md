@@ -14,5 +14,5 @@ This folder currently contains exploratory domain drafts from earlier project ph
 
 As implementation progresses, migrate validated sections from legacy docs into:
 
-- service-specific docs under `services/portal/docs` and `services/database/docs`
+- service-specific docs under the corresponding service directories (for example, `services/portal/` and `services/database/`)
 - ADR records under `docs/decisions/`
