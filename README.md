@@ -1,72 +1,101 @@
-# Restaurant System Backend - Multi-tenant Foundation
+# Restaurant System Backend (Baseline v0.1)
 
-This repository now serves as the **architecture and implementation foundation** for a two-microservice platform:
+Minimal two-microservice baseline with strict multi-tenant isolation:
 
-1. **Portal Service (Reflex/Python)**
-   - Tenant onboarding
-   - User and access bootstrap
-   - Database connection registration and validation
-2. **Database Service (Python + SQLite in-memory for now)**
-   - Multi-tenant data API
-   - Tenant-scoped persistence and domain flows
+- **portal-service**: Reflex app + tenant management + proxy API.
+- **database-service**: FastAPI + SQLite (in-memory shared cache) + tenant-scoped CRUD.
 
-> Current status: this repository is still documentation-heavy and does not yet contain the full service source code. The goal of this baseline is to make implementation decisions explicit and reduce ambiguity before code expansion.
+## Why `X-Tenant-ID` header?
 
-## Why this cleanup was necessary
+This baseline uses `X-Tenant-ID` for tenant propagation because it is explicit, easy to trace in logs, and portable across UI/API requests without path coupling. Every tenant-owned CRUD operation requires this header.
 
-The previous repository context mixed references to React + SQL Server artifacts and restaurant POS domain drafts. That created architectural drift relative to the current target (Reflex Portal + tenant-aware Database service). The updated docs establish:
-
-- Clear service boundaries
-- Tenant lifecycle and ownership
-- Database connection strategy
-- Domain model and flow contracts
-- A recommended scalable directory layout
-
-## Repository structure (target)
+## Project structure
 
 ```text
-.
-├─ services/
-│  ├─ portal/                     # Reflex app (tenant onboarding + admin UI)
-│  │  ├─ app/
-│  │  │  ├─ ui/                   # Reflex pages/components/state
-│  │  │  ├─ domain/               # Portal use-cases + entities
-│  │  │  ├─ infrastructure/       # Adapters: HTTP clients, auth providers
-│  │  │  └─ config/
-│  │  ├─ tests/
-│  │  └─ pyproject.toml
-│  └─ database/
-│     ├─ app/
-│     │  ├─ api/                  # REST/HTTP handlers
-│     │  ├─ domain/               # Core entities + business rules
-│     │  ├─ persistence/          # Repositories + DB adapters
-│     │  ├─ infrastructure/       # Logging, telemetry, integration adapters
-│     │  └─ config/
-│     ├─ migrations/
-│     ├─ tests/
-│     └─ pyproject.toml
-├─ docs/
-│  ├─ decisions/                  # ADRs
-│  ├─ diagrams/
-│  └─ legacy/                     # Legacy exploratory docs kept for traceability
-├─ README.md
-├─ ARCHITECTURE.md
-├─ SETUP.md
-└─ .env.example
+services/
+  database_service/
+    app.py
+    models.py
+    schemas.py
+  portal_service/
+    app.py
+    client.py
+tests/
+  test_database_service.py
+  test_portal_integration.py
+ARCHITECTURE.md
+SETUP.md
+pyproject.toml
 ```
 
-## Core documentation
+## Quick start
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - service boundaries, lifecycle, flows, risks, and technical debt.
-- [SETUP.md](./SETUP.md) - local setup and execution strategy for the future implementation.
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+```
 
-## Legacy artifacts
+Start services in two terminals:
 
-Earlier exploratory domain notes were preserved under `docs/` and should be considered **draft references only** until migrated into the new service-specific implementation docs.
+```bash
+# Terminal A
+uvicorn services.database_service.app:app --host 0.0.0.0 --port 8001
 
-## Next implementation milestones
+# Terminal B (portal API + Reflex frontend backend)
+uvicorn services.portal_service.app:app.api --host 0.0.0.0 --port 8000
+```
 
-1. Scaffold `services/portal` Reflex app with health endpoint and onboarding screen.
-2. Scaffold `services/database` API with tenant-aware middleware and in-memory SQLite adapter.
-3. Add contract tests between Portal and Database service for tenant registration.
-4. Introduce ADRs for tenancy model and migration path to persistent storage.
+Optional Reflex frontend dev server:
+
+```bash
+reflex run --frontend-only --frontend-port 3000
+```
+
+## cURL flow
+
+1. Create a tenant in portal service:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/tenants \
+  -H 'content-type: application/json' \
+  -d '{"name":"tenant-a"}'
+```
+
+2. Use tenant id to create product through portal proxy:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/products \
+  -H 'X-Tenant-ID: <tenant-id>' \
+  -H 'content-type: application/json' \
+  -d '{"data":{"name":"Latte","price":5.5}}'
+```
+
+3. List products for same tenant:
+
+```bash
+curl -s http://127.0.0.1:8000/api/products -H 'X-Tenant-ID: <tenant-id>'
+```
+
+4. Cross-tenant access is blocked (404 scope violation):
+
+```bash
+curl -i http://127.0.0.1:8000/api/products/<product-id> -H 'X-Tenant-ID: another-tenant'
+```
+
+## Tests
+
+```bash
+pytest
+```
+
+Coverage includes:
+
+- tenant isolation A vs B
+- cross-tenant read denial
+- CRUD lifecycle across core entities
+- portal -> database tenant-context forwarding
+
+## Next step for persistence
+
+Swap in-memory SQLite with persistent DB by changing SQLAlchemy URL and introducing migrations (Alembic). Existing repository/API contracts keep tenant checks independent of engine choice.

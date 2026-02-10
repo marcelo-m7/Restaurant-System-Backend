@@ -1,83 +1,55 @@
-# SETUP
+# Setup & Run
 
-This document defines the recommended development setup for the two-service architecture.
-
-> Note: service code scaffolds are expected to be added under `services/` as the next milestone.
-
-## 1. Prerequisites
-
+## Prerequisites
 - Python 3.11+
-- `uv` or `pip` + virtualenv
-- Docker + Docker Compose (optional for future infra dependencies)
-- Make (optional)
+- pip / venv
+- Node runtime only if running Reflex frontend dev server
 
-## 2. Environment variables
-
-Create a `.env` file from `.env.example`:
+## Install
 
 ```bash
-cp .env.example .env
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
 ```
 
-Then fill required values.
-
-## 3. Recommended local run model
-
-### Portal Service
-
-- Runtime: Reflex
-- Port: `3000` (or Reflex default in your setup)
-- Depends on: Database Service base URL and service token
-
-### Database Service
-
-- Runtime: Python API server (FastAPI/Flask-compatible architecture)
-- Port: `8000`
-- Initial persistence: in-memory SQLite (`sqlite:///:memory:`)
-
-## 4. Suggested boot sequence
-
-1. Start Database Service.
-2. Run migrations/bootstrap hooks (if enabled).
-3. Start Portal Service.
-4. Open Portal and execute tenant registration flow.
-
-## 5. Health checks (expected endpoints)
-
-- Database Service: `GET /health`
-- Portal Service: `GET /health`
-
-Both should return service identity + environment + dependency status.
-
-## 6. Development checks
-
-Once code is scaffolded, standardize the following checks:
+## Run database-service
 
 ```bash
-# Lint
-ruff check .
+uvicorn services.database_service.app:app --host 0.0.0.0 --port 8001 --reload
+```
 
-# Format
-ruff format .
+## Run portal-service API
 
-# Type check
-pyright
+```bash
+uvicorn services.portal_service.app:app.api --host 0.0.0.0 --port 8000 --reload
+```
 
-# Tests
+## Run Reflex frontend
+
+```bash
+reflex run --frontend-only --frontend-port 3000
+```
+
+Open: `http://127.0.0.1:3000`
+
+## Test suite
+
+```bash
 pytest
 ```
 
-## 7. Troubleshooting baseline
+## Manual multi-tenant checks
 
-- If tenant provisioning fails, inspect correlation IDs in both service logs.
-- If connection validation fails, verify host/port secrets in Portal config payload.
-- If tenant data leaks across requests, audit tenant middleware and repository filters.
+```bash
+# create two tenants
+TENANT_A=$(curl -s -X POST http://127.0.0.1:8000/api/tenants -H 'content-type: application/json' -d '{"name":"A"}' | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["id"])')
+TENANT_B=$(curl -s -X POST http://127.0.0.1:8000/api/tenants -H 'content-type: application/json' -d '{"name":"B"}' | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["id"])')
 
-## 8. Migration guidance (SQLite -> persistent DB)
+# A creates one product
+curl -s -X POST http://127.0.0.1:8000/api/products -H "X-Tenant-ID: ${TENANT_A}" -H 'content-type: application/json' -d '{"data":{"name":"A-only","price":1}}'
 
-When moving off in-memory SQLite:
-
-1. Switch to file-backed SQLite in development.
-2. Introduce migration tooling and schema versioning.
-3. Validate tenant-specific unique constraints.
-4. Add data retention and backup strategy before production DB adoption.
+# A sees 1 product, B sees 0
+curl -s http://127.0.0.1:8000/api/products -H "X-Tenant-ID: ${TENANT_A}"
+curl -s http://127.0.0.1:8000/api/products -H "X-Tenant-ID: ${TENANT_B}"
+```
