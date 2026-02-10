@@ -1,0 +1,21 @@
+
+==================================== ERRORS ====================================
+______________ ERROR collecting tests/test_portal_integration.py _______________
+tests/test_portal_integration.py:5: in <module>
+    from services.portal_service import main as portal_main
+services/portal_service/main.py:127: in <module>
+    @api.get("/health")
+E   AttributeError: 'Starlette' object has no attribute 'get'
+------------------------------- Captured stdout --------------------------------
+Warning: Reflex support for Python 3.10 is deprecated and will be removed in a 
+future release. Please upgrade to Python 3.11 or higher for continued support.
+=============================== warnings summary ===============================
+../../root/.local/lib/python3.10/site-packages/starlette/applications.py:161
+  /root/.local/lib/python3.10/site-packages/starlette/applications.py:161: DeprecationWarning: The `exception_handler` decorator is deprecated, and will be removed in version 1.0.0. Refer to https://starlette.dev/exceptions/ for the recommended approach.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR tests/test_portal_integration.py - AttributeError: 'Starlette' object h...
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 warning, 1 error in 1.87s

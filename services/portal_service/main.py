@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import httpx
 import reflex as rx
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,25 +48,13 @@ class TenantRegistry:
         return self._tenants.get(tenant_id)
 
 
-class PortalState(rx.State):
-    message: str = "Restaurant portal-service running"
-
-
-class CrudPageState(rx.State):
-    unit_name: str = ""
-    area_name: str = ""
-    table_name: str = ""
-    product_name: str = ""
-    payment_amount: str = ""
-
-
 portal_app = rx.App()
 
 
 def home() -> rx.Component:
     return rx.vstack(
         rx.heading("Restaurant Portal"),
-        rx.text(PortalState.message),
+        rx.text("Restaurant portal-service running"),
         rx.hstack(
             rx.link("Units", href="/units"),
             rx.link("Areas", href="/areas"),
@@ -98,8 +86,8 @@ portal_app.add_page(lambda: simple_form_page("Products", "Product name"), route=
 portal_app.add_page(lambda: simple_form_page("Orders", "Order details"), route="/orders")
 portal_app.add_page(lambda: simple_form_page("Payments", "Payment amount"), route="/payments")
 portal_app.add_page(lambda: simple_form_page("Tabs", "Tab action"), route="/tabs")
-api = portal_app.api
 
+api = FastAPI(title="portal-service", version="0.2.0")
 api.state.config = PortalConfig()
 api.state.tenants = TenantRegistry()
 
@@ -113,9 +101,13 @@ async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONR
 async def resolve_tenant(request: Request) -> str:
     tenant_id = request.headers.get(TENANT_HEADER)
     if not tenant_id:
-        raise HTTPException(status_code=400, detail={"error": "missing_tenant", "detail": f"{TENANT_HEADER} header required"})
+        raise HTTPException(
+            status_code=400, detail={"error": "missing_tenant", "detail": f"{TENANT_HEADER} header required"}
+        )
     if not request.app.state.tenants.get(tenant_id):
-        raise HTTPException(status_code=403, detail={"error": "unknown_tenant", "detail": "Tenant not registered in portal"})
+        raise HTTPException(
+            status_code=403, detail={"error": "unknown_tenant", "detail": "Tenant not registered in portal"}
+        )
     request.state.tenant_id = tenant_id
     return tenant_id
 

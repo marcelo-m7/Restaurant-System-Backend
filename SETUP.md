@@ -1,12 +1,6 @@
 # Setup Guide
 
-## Prerequisites
-
-- Python 3.11+
-- `pip` (or `uv`) and virtual environment support
-- Optional: Docker and Docker Compose for future infra workflows
-
-## Installation
+## 1) Create virtual environment
 
 ```bash
 python -m venv .venv
@@ -14,55 +8,68 @@ source .venv/bin/activate
 pip install -e .[dev]
 ```
 
-## Environment Configuration
+## 2) Configure environment
 
-Copy environment defaults:
+Copy defaults:
 
 ```bash
 cp .env.example .env
 ```
 
-Set values as needed for local development.
+Key variables:
+- `DATABASE_SERVICE_URL`: portal upstream base URL.
+- `PORTAL_HOST`, `PORTAL_PORT`: portal bind settings.
+- `DATABASE_HOST`, `DATABASE_PORT`: database-service bind settings.
+- `DATABASE_URL`: reserved for persistence migrations (current service uses in-memory SQLite).
 
-## Required Environment Variables
+## 3) Start services
 
-- `DATABASE_SERVICE_URL`: portal-service upstream URL for database-service.
-- `PORTAL_HOST`: host interface for portal-service.
-- `PORTAL_PORT`: port for portal-service API.
-- `DATABASE_HOST`: host interface for database-service.
-- `DATABASE_PORT`: port for database-service API.
-- `DATABASE_URL`: persistence DSN (currently defaults to in-memory SQLite).
-
-## Recommended Local Run Model
-
-Start each service in a separate terminal.
-
-### 1) database-service
+Terminal A:
 
 ```bash
 uvicorn services.database_service.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-### 2) portal-service API
+Terminal B:
 
 ```bash
 DATABASE_SERVICE_URL=http://127.0.0.1:8001 \
 uvicorn services.portal_service.main:api --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 3) Optional Reflex UI
+Optional Reflex page shell:
 
 ```bash
 reflex run
 ```
 
-## Health Checks
+## SQLite in-memory/shared notes
 
-- `GET http://127.0.0.1:8000/health` (portal-service)
-- `GET http://127.0.0.1:8001/health` (database-service)
+- The database-service uses a process-local in-memory SQLite connection.
+- Data resets whenever the service process restarts.
+- Great for tests/dev speed, not suitable for durable environments.
+- Multi-process deployments need a persistent DB and migration strategy.
 
-## Test Suite
+## 4) Verify setup
+
+```bash
+curl -s http://127.0.0.1:8001/health
+curl -s http://127.0.0.1:8000/health
+```
+
+## 5) Run QA checks
 
 ```bash
 pytest -q
+ruff check .
+ruff format .
+mypy .
+pytest --cov=services --cov=tests --cov-report=term-missing
 ```
+
+## Troubleshooting
+
+- **`missing_tenant` errors**: include `X-Tenant-ID` header.
+- **`unknown_tenant` from portal**: create tenant via `POST /tenants` first.
+- **Reflex warnings on Python 3.10**: upgrade to Python 3.11+ for best support.
+- **Empty data after restart**: expected with in-memory SQLite.

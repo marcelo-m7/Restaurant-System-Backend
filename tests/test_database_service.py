@@ -5,7 +5,9 @@ from services.database_service.main import TenantHeader, create_app
 
 def setup_domain(client: TestClient, headers: dict[str, str]) -> dict[str, int]:
     category = client.post("/categories", headers=headers, json={"name": "Main"}).json()
-    product = client.post("/products", headers=headers, json={"name": "Burger", "price": 10.0, "category_id": category["id"]}).json()
+    product = client.post(
+        "/products", headers=headers, json={"name": "Burger", "price": 10.0, "category_id": category["id"]}
+    ).json()
     unit = client.post(
         "/units",
         headers=headers,
@@ -36,7 +38,9 @@ def test_domain_flows_and_financial_recalculation() -> None:
     send_without_items = client.post(f"/orders/{order_id}/send", headers=headers)
     assert send_without_items.status_code == 409
 
-    item = client.post("/order-items", headers=headers, json={"order_id": order_id, "product_id": setup["product_id"], "quantity": 2})
+    item = client.post(
+        "/order-items", headers=headers, json={"order_id": order_id, "product_id": setup["product_id"], "quantity": 2}
+    )
     assert item.status_code == 201
     assert item.json()["product_name_snapshot"] == "Burger"
     assert item.json()["unit_price_snapshot"] == 10.0
@@ -82,9 +86,13 @@ def test_domain_flows_and_financial_recalculation() -> None:
     # Cannot open second tab while first one is open.
     setup2 = setup_domain(client, {TenantHeader: "tenant-b"})
     tenant_b = {TenantHeader: "tenant-b"}
-    first = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+    first = client.post(
+        "/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]}
+    )
     assert first.status_code == 201
-    second = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+    second = client.post(
+        "/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]}
+    )
     assert second.status_code == 409
 
     voided = client.post(f"/order-items/{item_id}/void", headers=headers)
@@ -97,7 +105,9 @@ def test_tenant_isolation_on_domain_endpoints() -> None:
     tenant_b = {TenantHeader: "tenant-b"}
     setup = setup_domain(client, tenant_a)
 
-    tab = client.post("/tabs/open", headers=tenant_a, json={"unit_id": setup["unit_id"], "table_id": setup["table_id"]}).json()
+    tab = client.post(
+        "/tabs/open", headers=tenant_a, json={"unit_id": setup["unit_id"], "table_id": setup["table_id"]}
+    ).json()
     denied = client.post("/orders", headers=tenant_b, json={"tab_id": tab["id"]})
     assert denied.status_code == 404
 
@@ -107,3 +117,26 @@ def test_missing_tenant_header_is_rejected() -> None:
     response = client.get("/categories")
     assert response.status_code == 400
     assert response.json()["error"] == "missing_tenant"
+
+
+def test_domain_order_creation_uses_domain_route_not_generic_crud() -> None:
+    client = TestClient(create_app())
+    headers = {TenantHeader: "tenant-a"}
+    setup = setup_domain(client, headers)
+    tab_id = client.post(
+        "/tabs/open", headers=headers, json={"unit_id": setup["unit_id"], "table_id": setup["table_id"]}
+    ).json()["id"]
+
+    response = client.post("/orders", headers=headers, json={"tab_id": tab_id})
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "draft"
+
+
+def test_http_errors_return_consistent_error_schema() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/categories")
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "missing_tenant", "detail": f"{TenantHeader} header required"}

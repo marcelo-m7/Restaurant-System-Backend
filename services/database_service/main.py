@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Iterator, Literal
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 TenantHeader = "X-Tenant-ID"
@@ -224,7 +226,9 @@ def utcnow() -> str:
 
 def get_tenant_id(x_tenant_id: str | None = Header(default=None, alias=TenantHeader)) -> str:
     if not x_tenant_id:
-        raise HTTPException(status_code=400, detail={"error": "missing_tenant", "detail": f"{TenantHeader} header required"})
+        raise HTTPException(
+            status_code=400, detail={"error": "missing_tenant", "detail": f"{TenantHeader} header required"}
+        )
     return x_tenant_id
 
 
@@ -237,7 +241,9 @@ def fetch_one(conn: sqlite3.Connection, query: str, args: tuple[Any, ...], error
 
 def recalc_tab(conn: sqlite3.Connection, tenant_id: str, tab_id: int) -> dict[str, Any]:
     tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (tab_id, tenant_id), "Tab not found")
-    unit = fetch_one(conn, "SELECT * FROM units WHERE id=? AND tenant_id=?", (tab["unit_id"], tenant_id), "Unit not found")
+    unit = fetch_one(
+        conn, "SELECT * FROM units WHERE id=? AND tenant_id=?", (tab["unit_id"], tenant_id), "Unit not found"
+    )
 
     subtotal = conn.execute(
         """
@@ -277,8 +283,21 @@ def create_app(db: Database | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(_request, exc: HTTPException) -> dict[str, Any] | JSONResponse:
+        if isinstance(exc.detail, dict):
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        return JSONResponse(status_code=exc.status_code, content={"error": "http_error", "detail": str(exc.detail)})
+
     @app.post("/{entity}", status_code=status.HTTP_201_CREATED)
     def create_entity(entity: str, payload: dict[str, Any], tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
+        if entity == "orders":
+            return create_order(OrderIn.model_validate(payload), tenant_id)
+        if entity == "order-items":
+            return create_order_item(OrderItemIn.model_validate(payload), tenant_id)
+        if entity == "payments":
+            return create_payment(PaymentIn.model_validate(payload), tenant_id)
+
         definition = ENTITY_TABLES.get(entity)
         if not definition:
             raise HTTPException(status_code=404, detail={"error": "entity_not_found", "detail": entity})
@@ -324,7 +343,9 @@ def create_app(db: Database | None = None) -> FastAPI:
         return dict(row)
 
     @app.put("/{entity}/{item_id}")
-    def update_entity(entity: str, item_id: int, payload: dict[str, Any], tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
+    def update_entity(
+        entity: str, item_id: int, payload: dict[str, Any], tenant_id: str = Depends(get_tenant_id)
+    ) -> dict[str, Any]:
         definition = ENTITY_TABLES.get(entity)
         if not definition:
             raise HTTPException(status_code=404, detail={"error": "entity_not_found", "detail": entity})
@@ -336,8 +357,15 @@ def create_app(db: Database | None = None) -> FastAPI:
         with app.state.db.session() as conn:
             cursor = conn.execute(f"UPDATE {table_name} SET {assignments} WHERE id = ? AND tenant_id = ?", values)
             if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail={"error": "resource_not_found", "detail": "No resource for tenant"})
-            row = fetch_one(conn, f"SELECT * FROM {table_name} WHERE id = ? AND tenant_id = ?", (item_id, tenant_id), "No resource for tenant")
+                raise HTTPException(
+                    status_code=404, detail={"error": "resource_not_found", "detail": "No resource for tenant"}
+                )
+            row = fetch_one(
+                conn,
+                f"SELECT * FROM {table_name} WHERE id = ? AND tenant_id = ?",
+                (item_id, tenant_id),
+                "No resource for tenant",
+            )
         return dict(row)
 
     @app.delete("/{entity}/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -349,80 +377,160 @@ def create_app(db: Database | None = None) -> FastAPI:
         with app.state.db.session() as conn:
             cursor = conn.execute(f"DELETE FROM {table_name} WHERE id = ? AND tenant_id = ?", (item_id, tenant_id))
             if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail={"error": "resource_not_found", "detail": "No resource for tenant"})
+                raise HTTPException(
+                    status_code=404, detail={"error": "resource_not_found", "detail": "No resource for tenant"}
+                )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.post("/tabs/open", status_code=201)
     def open_tab(payload: OpenTabIn, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
         with app.state.db.session() as conn:
-            fetch_one(conn, "SELECT * FROM dining_tables WHERE id=? AND tenant_id=?", (payload.table_id, tenant_id), "Table not found")
+            fetch_one(
+                conn,
+                "SELECT * FROM dining_tables WHERE id=? AND tenant_id=?",
+                (payload.table_id, tenant_id),
+                "Table not found",
+            )
             open_tab_row = conn.execute(
                 "SELECT id FROM tabs WHERE tenant_id=? AND table_id=? AND status='open'",
                 (tenant_id, payload.table_id),
             ).fetchone()
             if open_tab_row:
-                raise HTTPException(status_code=409, detail={"error": "tab_already_open", "detail": "Table already has an open tab"})
+                raise HTTPException(
+                    status_code=409, detail={"error": "tab_already_open", "detail": "Table already has an open tab"}
+                )
             cursor = conn.execute(
-                "INSERT INTO tabs(tenant_id, unit_id, table_id, status, opened_at, due_amount) VALUES (?, ?, ?, 'open', ?, 0)",
+                (
+                    "INSERT INTO tabs(tenant_id, unit_id, table_id, status, opened_at, due_amount) "
+                    "VALUES (?, ?, ?, 'open', ?, 0)"
+                ),
                 (tenant_id, payload.unit_id, payload.table_id, utcnow()),
             )
-            return dict(fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Tab not found"))
+            return dict(
+                fetch_one(
+                    conn,
+                    "SELECT * FROM tabs WHERE id=? AND tenant_id=?",
+                    (cursor.lastrowid, tenant_id),
+                    "Tab not found",
+                )
+            )
 
     @app.post("/orders", status_code=201)
     def create_order(payload: OrderIn, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
         with app.state.db.session() as conn:
-            tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found")
+            tab = fetch_one(
+                conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found"
+            )
             if tab["status"] != "open":
-                raise HTTPException(status_code=409, detail={"error": "tab_closed", "detail": "Cannot add order to closed tab"})
+                raise HTTPException(
+                    status_code=409, detail={"error": "tab_closed", "detail": "Cannot add order to closed tab"}
+                )
             cursor = conn.execute(
                 "INSERT INTO orders(tenant_id, tab_id, status) VALUES (?, ?, 'draft')",
                 (tenant_id, payload.tab_id),
             )
-            return dict(fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Order not found"))
+            return dict(
+                fetch_one(
+                    conn,
+                    "SELECT * FROM orders WHERE id=? AND tenant_id=?",
+                    (cursor.lastrowid, tenant_id),
+                    "Order not found",
+                )
+            )
 
     @app.post("/order-items", status_code=201)
     def create_order_item(payload: OrderItemIn, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
         with app.state.db.session() as conn:
-            order = fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (payload.order_id, tenant_id), "Order not found")
+            order = fetch_one(
+                conn,
+                "SELECT * FROM orders WHERE id=? AND tenant_id=?",
+                (payload.order_id, tenant_id),
+                "Order not found",
+            )
             if order["status"] != "draft":
-                raise HTTPException(status_code=409, detail={"error": "order_immutable", "detail": "Only draft orders can receive items"})
-            product = fetch_one(conn, "SELECT * FROM products WHERE id=? AND tenant_id=?", (payload.product_id, tenant_id), "Product not found")
+                raise HTTPException(
+                    status_code=409,
+                    detail={"error": "order_immutable", "detail": "Only draft orders can receive items"},
+                )
+            product = fetch_one(
+                conn,
+                "SELECT * FROM products WHERE id=? AND tenant_id=?",
+                (payload.product_id, tenant_id),
+                "Product not found",
+            )
             cursor = conn.execute(
                 """
-                INSERT INTO order_items(tenant_id, order_id, product_id, product_name_snapshot, unit_price_snapshot, quantity, status)
+                INSERT INTO order_items(
+                    tenant_id, order_id, product_id, product_name_snapshot, unit_price_snapshot, quantity, status
+                )
                 VALUES (?, ?, ?, ?, ?, ?, 'active')
                 """,
                 (tenant_id, payload.order_id, payload.product_id, product["name"], product["price"], payload.quantity),
             )
-            return dict(fetch_one(conn, "SELECT * FROM order_items WHERE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Item not found"))
+            return dict(
+                fetch_one(
+                    conn,
+                    "SELECT * FROM order_items WHERE id=? AND tenant_id=?",
+                    (cursor.lastrowid, tenant_id),
+                    "Item not found",
+                )
+            )
 
     @app.post("/orders/{order_id}/send")
     def send_order(order_id: int, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
         with app.state.db.session() as conn:
-            order = fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found")
+            order = fetch_one(
+                conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found"
+            )
             if order["status"] != "draft":
-                raise HTTPException(status_code=409, detail={"error": "order_immutable", "detail": "Order already sent"})
+                raise HTTPException(
+                    status_code=409, detail={"error": "order_immutable", "detail": "Order already sent"}
+                )
             item_count = conn.execute(
                 "SELECT COUNT(*) FROM order_items WHERE order_id=? AND tenant_id=? AND status!='void'",
                 (order_id, tenant_id),
             ).fetchone()[0]
             if item_count == 0:
-                raise HTTPException(status_code=409, detail={"error": "order_empty", "detail": "Cannot send empty order"})
-            conn.execute("UPDATE orders SET status='sent', sent_at=? WHERE id=? AND tenant_id=?", (utcnow(), order_id, tenant_id))
-            return dict(fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found"))
+                raise HTTPException(
+                    status_code=409, detail={"error": "order_empty", "detail": "Cannot send empty order"}
+                )
+            conn.execute(
+                "UPDATE orders SET status='sent', sent_at=? WHERE id=? AND tenant_id=?", (utcnow(), order_id, tenant_id)
+            )
+            return dict(
+                fetch_one(
+                    conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (order_id, tenant_id), "Order not found"
+                )
+            )
 
     @app.post("/order-items/{item_id}/void")
     def void_item(item_id: int, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
         with app.state.db.session() as conn:
-            item = fetch_one(conn, "SELECT * FROM order_items WHERE id=? AND tenant_id=?", (item_id, tenant_id), "Item not found")
+            item = fetch_one(
+                conn, "SELECT * FROM order_items WHERE id=? AND tenant_id=?", (item_id, tenant_id), "Item not found"
+            )
             if item["status"] == "void":
                 return dict(item)
-            order = fetch_one(conn, "SELECT * FROM orders WHERE id=? AND tenant_id=?", (item["order_id"], tenant_id), "Order not found")
+            order = fetch_one(
+                conn,
+                "SELECT * FROM orders WHERE id=? AND tenant_id=?",
+                (item["order_id"], tenant_id),
+                "Order not found",
+            )
             if order["status"] != "sent":
-                raise HTTPException(status_code=409, detail={"error": "invalid_state", "detail": "Only sent order items can be voided"})
-            conn.execute("UPDATE order_items SET status='void', voided_at=? WHERE id=? AND tenant_id=?", (utcnow(), item_id, tenant_id))
+                raise HTTPException(
+                    status_code=409, detail={"error": "invalid_state", "detail": "Only sent order items can be voided"}
+                )
+            conn.execute(
+                "UPDATE order_items SET status='void', voided_at=? WHERE id=? AND tenant_id=?",
+                (utcnow(), item_id, tenant_id),
+            )
             recalc_tab(conn, tenant_id, order["tab_id"])
-            return dict(fetch_one(conn, "SELECT * FROM order_items WHERE id=? AND tenant_id=?", (item_id, tenant_id), "Item not found"))
+            return dict(
+                fetch_one(
+                    conn, "SELECT * FROM order_items WHERE id=? AND tenant_id=?", (item_id, tenant_id), "Item not found"
+                )
+            )
 
     @app.post("/tabs/{tab_id}/recalculate")
     def recalculate_tab(tab_id: int, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
@@ -432,27 +540,52 @@ def create_app(db: Database | None = None) -> FastAPI:
     @app.post("/payments", status_code=201)
     def create_payment(payload: PaymentIn, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
         with app.state.db.session() as conn:
-            tab = fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found")
+            tab = fetch_one(
+                conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (payload.tab_id, tenant_id), "Tab not found"
+            )
             if tab["status"] != "open":
-                raise HTTPException(status_code=409, detail={"error": "tab_closed", "detail": "Cannot pay a closed tab"})
+                raise HTTPException(
+                    status_code=409, detail={"error": "tab_closed", "detail": "Cannot pay a closed tab"}
+                )
             recalc = recalc_tab(conn, tenant_id, payload.tab_id)
             if payload.amount > recalc["due_amount"]:
-                raise HTTPException(status_code=409, detail={"error": "payment_exceeds_due", "detail": "Amount exceeds due amount"})
+                raise HTTPException(
+                    status_code=409, detail={"error": "payment_exceeds_due", "detail": "Amount exceeds due amount"}
+                )
             cursor = conn.execute(
                 "INSERT INTO payments(tenant_id, tab_id, amount, method, status) VALUES (?, ?, ?, ?, 'pending')",
                 (tenant_id, payload.tab_id, payload.amount, payload.method),
             )
-            return dict(fetch_one(conn, "SELECT * FROM payments WHERE id=? AND tenant_id=?", (cursor.lastrowid, tenant_id), "Payment not found"))
+            return dict(
+                fetch_one(
+                    conn,
+                    "SELECT * FROM payments WHERE id=? AND tenant_id=?",
+                    (cursor.lastrowid, tenant_id),
+                    "Payment not found",
+                )
+            )
 
     @app.post("/payments/{payment_id}/confirm")
     def confirm_payment(payment_id: int, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
         with app.state.db.session() as conn:
-            payment = fetch_one(conn, "SELECT * FROM payments WHERE id=? AND tenant_id=?", (payment_id, tenant_id), "Payment not found")
+            payment = fetch_one(
+                conn, "SELECT * FROM payments WHERE id=? AND tenant_id=?", (payment_id, tenant_id), "Payment not found"
+            )
             if payment["status"] == "paid":
                 return dict(payment)
-            conn.execute("UPDATE payments SET status='paid', paid_at=? WHERE id=? AND tenant_id=?", (utcnow(), payment_id, tenant_id))
+            conn.execute(
+                "UPDATE payments SET status='paid', paid_at=? WHERE id=? AND tenant_id=?",
+                (utcnow(), payment_id, tenant_id),
+            )
             recalc_tab(conn, tenant_id, payment["tab_id"])
-            return dict(fetch_one(conn, "SELECT * FROM payments WHERE id=? AND tenant_id=?", (payment_id, tenant_id), "Payment not found"))
+            return dict(
+                fetch_one(
+                    conn,
+                    "SELECT * FROM payments WHERE id=? AND tenant_id=?",
+                    (payment_id, tenant_id),
+                    "Payment not found",
+                )
+            )
 
     @app.post("/tabs/{tab_id}/close")
     def close_tab(tab_id: int, tenant_id: str = Depends(get_tenant_id)) -> dict[str, Any]:
@@ -465,11 +598,19 @@ def create_app(db: Database | None = None) -> FastAPI:
                 (tab_id, tenant_id),
             ).fetchone()[0]
             if pending_orders > 0:
-                raise HTTPException(status_code=409, detail={"error": "pending_orders", "detail": "Tab has draft orders"})
+                raise HTTPException(
+                    status_code=409, detail={"error": "pending_orders", "detail": "Tab has draft orders"}
+                )
             if tab["due_amount"] > 0:
-                raise HTTPException(status_code=409, detail={"error": "amount_due", "detail": "Tab has remaining due amount"})
-            conn.execute("UPDATE tabs SET status='closed', closed_at=? WHERE id=? AND tenant_id=?", (utcnow(), tab_id, tenant_id))
-            return dict(fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (tab_id, tenant_id), "Tab not found"))
+                raise HTTPException(
+                    status_code=409, detail={"error": "amount_due", "detail": "Tab has remaining due amount"}
+                )
+            conn.execute(
+                "UPDATE tabs SET status='closed', closed_at=? WHERE id=? AND tenant_id=?", (utcnow(), tab_id, tenant_id)
+            )
+            return dict(
+                fetch_one(conn, "SELECT * FROM tabs WHERE id=? AND tenant_id=?", (tab_id, tenant_id), "Tab not found")
+            )
 
     return app
 

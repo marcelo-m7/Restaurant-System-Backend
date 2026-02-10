@@ -34,7 +34,9 @@ def test_portal_proxies_crud_and_domain_endpoints() -> None:
         headers=headers,
         json={"name": "Unit A", "timezone": "UTC", "service_fee_enabled": False, "service_fee_percent": 0},
     ).json()["id"]
-    area_id = portal_client.post("/api/areas", headers=headers, json={"unit_id": unit_id, "name": "Hall", "sort_order": 0}).json()["id"]
+    area_id = portal_client.post(
+        "/api/areas", headers=headers, json={"unit_id": unit_id, "name": "Hall", "sort_order": 0}
+    ).json()["id"]
     table_id = portal_client.post(
         "/api/tables",
         headers=headers,
@@ -47,7 +49,9 @@ def test_portal_proxies_crud_and_domain_endpoints() -> None:
     assert order.status_code == 201
     order_id = order.json()["id"]
 
-    item = portal_client.post("/api/order-items", headers=headers, json={"order_id": order_id, "product_id": product_id, "quantity": 1})
+    item = portal_client.post(
+        "/api/order-items", headers=headers, json={"order_id": order_id, "product_id": product_id, "quantity": 1}
+    )
     assert item.status_code == 201
     send = portal_client.post(f"/api/orders/{order_id}/send", headers=headers)
     assert send.status_code == 200
