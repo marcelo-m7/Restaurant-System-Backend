@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from json import JSONDecodeError
 from typing import Any
@@ -22,15 +21,17 @@ class TenantRecord(BaseModel):
     created_at: datetime
 
 
-@dataclass
-class PortalServiceApp:
-    api: FastAPI
+class APIError(BaseModel):
+    error: str
+    message: str
+    details: dict[str, Any] | None = None
+    timestamp: datetime
 
 
 def create_portal_app(
     db_base_url: str = "http://127.0.0.1:8001",
     transport: httpx.AsyncBaseTransport | None = None,
-) -> PortalServiceApp:
+) -> FastAPI:
     tenants: dict[str, TenantRecord] = {}
     db_client = DatabaseServiceClient(base_url=db_base_url, transport=transport)
     api = FastAPI(title="portal-service", version="0.1.0")
@@ -56,7 +57,11 @@ def create_portal_app(
         if not tenant_id:
             raise HTTPException(
                 status_code=400,
-                detail={"error": "MISSING_TENANT", "message": "X-Tenant-ID required"},
+                detail=APIError(
+                    error="MISSING_TENANT",
+                    message="X-Tenant-ID required",
+                    timestamp=datetime.now(UTC),
+                ).model_dump(mode="json"),
             )
         return tenant_id
 
@@ -71,8 +76,15 @@ def create_portal_app(
         except httpx.HTTPStatusError as exc:
             try:
                 detail = exc.response.json()
+                # Unwrap double-nested detail from upstream FastAPI errors
+                if isinstance(detail, dict) and "detail" in detail:
+                    detail = detail["detail"]
             except ValueError:
-                detail = {"error": "UPSTREAM_ERROR", "message": exc.response.text}
+                detail = APIError(
+                    error="UPSTREAM_ERROR",
+                    message=exc.response.text,
+                    timestamp=datetime.now(UTC),
+                ).model_dump(mode="json")
             raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
 
     @api.post("/api/tenants")
@@ -95,7 +107,11 @@ def create_portal_app(
         if not tenant:
             raise HTTPException(
                 status_code=404,
-                detail={"error": "TENANT_NOT_FOUND", "message": "Tenant not found"},
+                detail=APIError(
+                    error="TENANT_NOT_FOUND",
+                    message="Tenant not found",
+                    timestamp=datetime.now(UTC),
+                ).model_dump(mode="json"),
             )
         return {"data": tenant.model_dump(mode="json")}
 
@@ -108,7 +124,11 @@ def create_portal_app(
             except JSONDecodeError as exc:
                 raise HTTPException(
                     status_code=400,
-                    detail={"error": "INVALID_JSON", "message": "Request body must be valid JSON."},
+                    detail=APIError(
+                        error="INVALID_JSON",
+                        message="Request body must be valid JSON.",
+                        timestamp=datetime.now(UTC),
+                    ).model_dump(mode="json"),
                 ) from exc
         else:
             payload = None
@@ -123,13 +143,17 @@ def create_portal_app(
             except JSONDecodeError as exc:
                 raise HTTPException(
                     status_code=400,
-                    detail={"error": "INVALID_JSON", "message": "Request body must be valid JSON."},
+                    detail=APIError(
+                        error="INVALID_JSON",
+                        message="Request body must be valid JSON.",
+                        timestamp=datetime.now(UTC),
+                    ).model_dump(mode="json"),
                 ) from exc
         else:
             payload = None
         return await proxy_to_db(request.method, f"/v1/{entity}/{item_id}", tenant_id, payload)
 
-    return PortalServiceApp(api=api)
+    return api
 
 
-app = create_portal_app().api
+app = create_portal_app()
