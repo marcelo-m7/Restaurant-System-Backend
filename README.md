@@ -1,38 +1,72 @@
-# Boteco Pro Repository
+# Restaurant System Backend - Multi-tenant Foundation
 
-Este repositório agrupa os códigos e documentos do Boteco Pro, um sistema de gestão para restaurantes. O projeto está dividido em frontend (React) e backend (SQL Server + API), além de documentação complementar.
+This repository now serves as the **architecture and implementation foundation** for a two-microservice platform:
 
-## Estrutura do Repositório
+1. **Portal Service (Reflex/Python)**
+   - Tenant onboarding
+   - User and access bootstrap
+   - Database connection registration and validation
+2. **Database Service (Python + SQLite in-memory for now)**
+   - Multi-tenant data API
+   - Tenant-scoped persistence and domain flows
 
-```bash
-frontend/
-  docs/   - guias e especificações da interface web
-  src/    - implementação em React
-backend/
-  docs/   - modelagem do banco e descrição da API
-  src/
-    db/   - scripts SQL e arquivos relacionados ao banco de dados
-    api/  - implementação da API (a ser desenvolvida)
-docs/      - outros documentos do projeto
+> Current status: this repository is still documentation-heavy and does not yet contain the full service source code. The goal of this baseline is to make implementation decisions explicit and reduce ambiguity before code expansion.
+
+## Why this cleanup was necessary
+
+The previous repository context mixed references to React + SQL Server artifacts and restaurant POS domain drafts. That created architectural drift relative to the current target (Reflex Portal + tenant-aware Database service). The updated docs establish:
+
+- Clear service boundaries
+- Tenant lifecycle and ownership
+- Database connection strategy
+- Domain model and flow contracts
+- A recommended scalable directory layout
+
+## Repository structure (target)
+
+```text
+.
+├─ services/
+│  ├─ portal/                     # Reflex app (tenant onboarding + admin UI)
+│  │  ├─ app/
+│  │  │  ├─ ui/                   # Reflex pages/components/state
+│  │  │  ├─ domain/               # Portal use-cases + entities
+│  │  │  ├─ infrastructure/       # Adapters: HTTP clients, auth providers
+│  │  │  └─ config/
+│  │  ├─ tests/
+│  │  └─ pyproject.toml
+│  └─ database/
+│     ├─ app/
+│     │  ├─ api/                  # REST/HTTP handlers
+│     │  ├─ domain/               # Core entities + business rules
+│     │  ├─ persistence/          # Repositories + DB adapters
+│     │  ├─ infrastructure/       # Logging, telemetry, integration adapters
+│     │  └─ config/
+│     ├─ migrations/
+│     ├─ tests/
+│     └─ pyproject.toml
+├─ docs/
+│  ├─ decisions/                  # ADRs
+│  ├─ diagrams/
+│  └─ legacy/                     # Legacy exploratory docs kept for traceability
+├─ README.md
+├─ ARCHITECTURE.md
+├─ SETUP.md
+└─ .env.example
 ```
 
-O banco de dados está sendo executado localmente em **Microsoft SQL Server** e ficará disponível para a API em `localhost`. Futuramente poderá ser movido para a Google Cloud, utilizando scripts de conexão na pasta `backend/src/db`.
+## Core documentation
 
-O frontend consome a API para obter ou persistir dados. Enquanto a implementação da API não estiver pronta, o frontend utiliza arquivos mockados para simular as respostas.
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - service boundaries, lifecycle, flows, risks, and technical debt.
+- [SETUP.md](./SETUP.md) - local setup and execution strategy for the future implementation.
 
-## Documentação Complementar
+## Legacy artifacts
 
-- `backend/docs/` contém detalhes de modelagem e dos objetos (Views, SPs etc.).
-- `docs/MVP.md` descreve o plano de implementação inicial do frontend.
-«
-Consulte cada pasta para informações específicas de instalação e execução.
+Earlier exploratory domain notes were preserved under `docs/` and should be considered **draft references only** until migrated into the new service-specific implementation docs.
 
-## Docker Compose
+## Next implementation milestones
 
-Para executar todo o projeto via contêineres utilize:
-
-```bash
-docker compose up
-```
-
-A API lê a string de conexão do SQL Server a partir da variável `BOTECOPRO_DB_DSN`. Defina-a em um arquivo `.env` na raiz ou exporte antes de iniciar os serviços. O frontend pode receber `VITE_API_BASE_URL` e `VITE_API_TOKEN` para apontar para o backend desejado. Consulte os arquivos `.env.example` em cada pasta para valores de exemplo.
+1. Scaffold `services/portal` Reflex app with health endpoint and onboarding screen.
+2. Scaffold `services/database` API with tenant-aware middleware and in-memory SQLite adapter.
+3. Add contract tests between Portal and Database service for tenant registration.
+4. Introduce ADRs for tenancy model and migration path to persistent storage.
