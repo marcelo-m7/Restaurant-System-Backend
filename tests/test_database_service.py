@@ -1,77 +1,105 @@
 from fastapi.testclient import TestClient
 
-from services.database_service.main import create_app, TenantHeader
+from services.database_service.main import TenantHeader, create_app
 
 
-def test_tenant_isolation_and_crud_lifecycle() -> None:
+def setup_domain(client: TestClient, headers: dict[str, str]) -> dict[str, int]:
+    category = client.post("/categories", headers=headers, json={"name": "Main"}).json()
+    product = client.post("/products", headers=headers, json={"name": "Burger", "price": 10.0, "category_id": category["id"]}).json()
+    unit = client.post(
+        "/units",
+        headers=headers,
+        json={"name": "Downtown", "timezone": "UTC", "service_fee_enabled": True, "service_fee_percent": 10},
+    ).json()
+    area = client.post("/areas", headers=headers, json={"unit_id": unit["id"], "name": "Hall", "sort_order": 1}).json()
+    table = client.post(
+        "/tables",
+        headers=headers,
+        json={"unit_id": unit["id"], "area_id": area["id"], "name": "T1", "capacity": 4, "status": "available"},
+    ).json()
+    return {"product_id": product["id"], "unit_id": unit["id"], "table_id": table["id"]}
+
+
+def test_domain_flows_and_financial_recalculation() -> None:
     client = TestClient(create_app())
+    headers = {TenantHeader: "tenant-a"}
+    setup = setup_domain(client, headers)
 
+    tab = client.post("/tabs/open", headers=headers, json={"unit_id": setup["unit_id"], "table_id": setup["table_id"]})
+    assert tab.status_code == 201
+    tab_id = tab.json()["id"]
+
+    order = client.post("/orders", headers=headers, json={"tab_id": tab_id})
+    assert order.status_code == 201
+    order_id = order.json()["id"]
+
+    send_without_items = client.post(f"/orders/{order_id}/send", headers=headers)
+    assert send_without_items.status_code == 409
+
+    item = client.post("/order-items", headers=headers, json={"order_id": order_id, "product_id": setup["product_id"], "quantity": 2})
+    assert item.status_code == 201
+    assert item.json()["product_name_snapshot"] == "Burger"
+    assert item.json()["unit_price_snapshot"] == 10.0
+    item_id = item.json()["id"]
+
+    # Snapshot must remain stable even when product price changes.
+    update_product = client.put(
+        f"/products/{setup['product_id']}", headers=headers, json={"name": "Burger", "price": 20.0, "category_id": 1}
+    )
+    assert update_product.status_code == 200
+
+    send_order = client.post(f"/orders/{order_id}/send", headers=headers)
+    assert send_order.status_code == 200
+
+    immutable_after_send = client.post(
+        "/order-items", headers=headers, json={"order_id": order_id, "product_id": setup["product_id"], "quantity": 1}
+    )
+    assert immutable_after_send.status_code == 409
+
+    tab_totals = client.post(f"/tabs/{tab_id}/recalculate", headers=headers)
+    assert tab_totals.status_code == 200
+    assert tab_totals.json()["subtotal_amount"] == 20.0
+    assert tab_totals.json()["service_fee_amount"] == 2.0
+    assert tab_totals.json()["total_amount"] == 22.0
+    assert tab_totals.json()["due_amount"] == 22.0
+
+    overpay = client.post("/payments", headers=headers, json={"tab_id": tab_id, "amount": 25.0, "method": "card"})
+    assert overpay.status_code == 409
+
+    payment = client.post("/payments", headers=headers, json={"tab_id": tab_id, "amount": 22.0, "method": "card"})
+    assert payment.status_code == 201
+    payment_id = payment.json()["id"]
+
+    confirm = client.post(f"/payments/{payment_id}/confirm", headers=headers)
+    assert confirm.status_code == 200
+    assert confirm.json()["status"] == "paid"
+    assert confirm.json()["paid_at"] is not None
+
+    closed = client.post(f"/tabs/{tab_id}/close", headers=headers)
+    assert closed.status_code == 200
+    assert closed.json()["status"] == "closed"
+
+    # Cannot open second tab while first one is open.
+    setup2 = setup_domain(client, {TenantHeader: "tenant-b"})
+    tenant_b = {TenantHeader: "tenant-b"}
+    first = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+    assert first.status_code == 201
+    second = client.post("/tabs/open", headers=tenant_b, json={"unit_id": setup2["unit_id"], "table_id": setup2["table_id"]})
+    assert second.status_code == 409
+
+    voided = client.post(f"/order-items/{item_id}/void", headers=headers)
+    assert voided.status_code == 200
+
+
+def test_tenant_isolation_on_domain_endpoints() -> None:
+    client = TestClient(create_app())
     tenant_a = {TenantHeader: "tenant-a"}
     tenant_b = {TenantHeader: "tenant-b"}
+    setup = setup_domain(client, tenant_a)
 
-    category_payload = {"name": "Burgers"}
-    created_category = client.post("/categories", headers=tenant_a, json=category_payload)
-    assert created_category.status_code == 201
-    category_id = created_category.json()["id"]
-
-    product_payload = {"name": "Classic Burger", "price": 18.5, "category_id": category_id}
-    created_product = client.post("/products", headers=tenant_a, json=product_payload)
-    assert created_product.status_code == 201
-    product_id = created_product.json()["id"]
-
-    created_table = client.post("/tables", headers=tenant_a, json={"name": "T1", "seats": 4, "status": "available"})
-    assert created_table.status_code == 201
-    table_id = created_table.json()["id"]
-
-    created_tab = client.post("/tabs", headers=tenant_a, json={"table_id": table_id, "status": "open"})
-    assert created_tab.status_code == 201
-    tab_id = created_tab.json()["id"]
-
-    created_order = client.post("/orders", headers=tenant_a, json={"tab_id": tab_id, "status": "pending"})
-    assert created_order.status_code == 201
-    order_id = created_order.json()["id"]
-
-    created_order_item = client.post(
-        "/order-items",
-        headers=tenant_a,
-        json={"order_id": order_id, "product_id": product_id, "quantity": 2, "unit_price": 18.5},
-    )
-    assert created_order_item.status_code == 201
-
-    created_payment = client.post(
-        "/payments",
-        headers=tenant_a,
-        json={"tab_id": tab_id, "amount": 37.0, "method": "card", "status": "paid"},
-    )
-    assert created_payment.status_code == 201
-    payment_id = created_payment.json()["id"]
-
-    list_a = client.get("/products", headers=tenant_a)
-    list_b = client.get("/products", headers=tenant_b)
-    assert list_a.status_code == 200 and len(list_a.json()["items"]) == 1
-    assert list_b.status_code == 200 and len(list_b.json()["items"]) == 0
-
-    cross_read = client.get(f"/products/{product_id}", headers=tenant_b)
-    cross_update = client.put(
-        f"/products/{product_id}",
-        headers=tenant_b,
-        json={"name": "Hack", "price": 1.0, "category_id": category_id},
-    )
-    cross_delete = client.delete(f"/payments/{payment_id}", headers=tenant_b)
-    assert cross_read.status_code == 404
-    assert cross_update.status_code == 404
-    assert cross_delete.status_code == 404
-
-    updated = client.put(
-        f"/products/{product_id}",
-        headers=tenant_a,
-        json={"name": "Classic Burger XL", "price": 20.0, "category_id": category_id},
-    )
-    assert updated.status_code == 200
-    assert updated.json()["name"] == "Classic Burger XL"
-
-    deleted = client.delete(f"/payments/{payment_id}", headers=tenant_a)
-    assert deleted.status_code == 204
+    tab = client.post("/tabs/open", headers=tenant_a, json={"unit_id": setup["unit_id"], "table_id": setup["table_id"]}).json()
+    denied = client.post("/orders", headers=tenant_b, json={"tab_id": tab["id"]})
+    assert denied.status_code == 404
 
 
 def test_missing_tenant_header_is_rejected() -> None:

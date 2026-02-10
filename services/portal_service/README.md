@@ -1,14 +1,14 @@
 # portal_service
 
-`portal_service` is the tenant-facing API gateway for the Restaurant System baseline.
+`portal_service` is the tenant-facing API gateway for the Restaurant System.
 
 ## Responsibilities
 
 - Register and list tenants (`/tenants` endpoints).
 - Validate `X-Tenant-ID` on tenant-scoped API requests.
-- Proxy CRUD requests from `/api/*` to `database_service`.
+- Proxy all tenant API requests from `/api/*` to `database_service`, including domain workflow endpoints.
 - Expose `GET /health` for local health checks.
-- Serve the Reflex application shell.
+- Serve a Reflex UI with simple management pages for units, areas, tables, products, orders, payments, and tabs.
 
 ## Run locally
 

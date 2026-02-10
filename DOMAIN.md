@@ -2,68 +2,44 @@
 
 This document summarizes the core domain entities, relationships, and V1 business rules for the multi-tenant restaurant system.
 
-## Core Entities and Responsibilities
+## Core Entities
 
 - **Tenant**: isolation boundary for all data and operations.
-- **Unit**: operational branch/location within a tenant.
-- **User**: actor that opens tabs, creates orders, and records payments.
-- **Area**: physical section of a unit (for example, hall or terrace).
-- **Table**: dine-in table where tabs are opened.
-- **Tab**: customer bill/session; aggregates financial totals.
-- **Order**: set of requested items attached to a tab.
-- **OrderItem**: line item with quantity and immutable price snapshot.
-- **Product**: sellable item.
-- **Category**: product grouping.
-- **Payment**: payment transaction attached to a tab.
-
-## Cardinalities (Conceptual)
-
-- Tenant `1 -> N` Unit, User, Product, Category.
-- Unit `1 -> N` Area, Table, Tab.
-- Area `1 -> N` Table.
-- Table `1 -> N` Tab (**at most one open tab at a time**).
-- Tab `1 -> N` Order, Payment.
-- Order `1 -> N` OrderItem.
-- Product `1 -> N` OrderItem.
-- User `1 -> N` Tab (openedBy), Order (createdBy), Payment (createdBy).
+- **Unit**: branch/location (`name`, `timezone`, `service_fee_enabled`, `service_fee_percent`).
+- **Area**: physical section in a unit (`unit_id`, `name`, `sort_order`).
+- **Table**: dine-in table (`unit_id`, `area_id`, `capacity`).
+- **User**: actor metadata (`name`, `email`, `status`, `roles`).
+- **Tab**: customer bill session with aggregated financial totals.
+- **Order**: draft/sent order attached to a tab.
+- **OrderItem**: immutable snapshot line item (`product_name_snapshot`, `unit_price_snapshot`, `quantity`, `status`).
+- **Product** and **Category**: catalog.
+- **Payment**: pending/paid payment attached to tab.
 
 ## Golden Rules
 
-1. **Single open tab per table**: a table cannot have more than one tab in `open` status.
-2. **Tab is the financial aggregator**: tab tracks subtotal, fees, total, paid, and due.
-3. **Order items keep immutable snapshots**: each `OrderItem` stores product price/name snapshots used at sale time.
-4. **Sent orders are not edited**: corrections are made by voiding items or creating new orders.
-5. **Closed tabs are immutable**: no new orders/items/payments can be added.
-6. **Tenant isolation is mandatory**: all reads/writes are tenant-scoped.
+1. **Single open tab per table**.
+2. **Tab totals are derived** from non-void items of sent orders.
+3. **Order item snapshots are immutable** and independent of future product changes.
+4. **Sent orders are immutable** (only item voids/new orders can adjust totals).
+5. **Closed tabs are immutable** for order and payment creation.
+6. **Tenant isolation is mandatory** on every endpoint.
 
-## V1 Use Cases
+## Workflow Endpoints
 
-- Open tab.
-- Create draft order.
-- Add item to order.
-- Void order item (auditable correction).
-- Send order.
-- Recalculate tab totals.
-- Create payment.
-- Confirm payment.
-- Close tab.
+- `POST /tabs/open` – open tab for a table if no open tab exists.
+- `POST /orders` – create a draft order for a tab.
+- `POST /order-items` – add an item to a draft order with product snapshots.
+- `POST /orders/{order_id}/send` – send only non-empty draft orders.
+- `POST /order-items/{item_id}/void` – void a sent-order item.
+- `POST /tabs/{tab_id}/recalculate` – recompute financial totals.
+- `POST /payments` – create pending payment (must not exceed due).
+- `POST /payments/{payment_id}/confirm` – confirm payment and recompute tab totals.
+- `POST /tabs/{tab_id}/close` – close tab when `due_amount == 0` and no draft orders.
 
-## Financial Rules
+## Financial Model
 
-Recommended calculation model:
-
-- `subtotal`: sum of active items from sent orders.
-- `service_fee`: optional percentage over subtotal.
-- `total`: `subtotal + service_fee`.
-- `paid`: sum of confirmed payments.
-- `due`: `max(total - paid, 0)`.
-
-## Audit Expectations
-
-Every relevant state change should preserve:
-
-- `who` (user id)
-- `when` (timestamp)
-- `why` (optional reason)
-
-This creates a traceable event trail and supports future integrations.
+- `subtotal_amount`: sum of active order items from `sent` orders.
+- `service_fee_amount`: optional percentage over subtotal based on unit settings.
+- `total_amount`: `subtotal_amount + service_fee_amount`.
+- `paid_amount`: sum of payments with status `paid`.
+- `due_amount`: `max(total_amount - paid_amount, 0)`.
