@@ -1,18 +1,10 @@
-# Documentation Notes
+# Documentation Index
 
-This folder currently contains exploratory domain drafts from earlier project phases.
+Canonical project documentation is kept at the repository root:
 
-## Status
+- `README.md` (project overview, quickstart, and testing)
+- `ARCHITECTURE.md` (service boundaries, tenant propagation, and error contract)
+- `DOMAIN.md` (domain entities, cardinalities, and golden rules)
+- `SETUP.md` (development setup and local run model)
 
-- `001_entidades.md`, `002_entidades_fluxo.md`, `002_entidades_checklist.md`, and `entidades.mmd` are **legacy/domain exploration artifacts**.
-- Canonical architecture and setup references now live at repository root:
-  - `ARCHITECTURE.md`
-  - `SETUP.md`
-  - `README.md`
-
-## Recommendation
-
-As implementation progresses, migrate validated sections from legacy docs into:
-
-- service-specific docs under the corresponding service directories (for example, `services/portal/` and `services/database/`)
-- ADR records under `docs/decisions/`
+This `docs/` directory is reserved for future supplementary material (ADRs, diagrams, and implementation notes).

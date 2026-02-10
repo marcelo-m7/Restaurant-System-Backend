@@ -1,83 +1,68 @@
-# SETUP
+# Setup Guide
 
-This document defines the recommended development setup for the two-service architecture.
-
-> Note: service code scaffolds are expected to be added under `services/` as the next milestone.
-
-## 1. Prerequisites
+## Prerequisites
 
 - Python 3.11+
-- `uv` or `pip` + virtualenv
-- Docker + Docker Compose (optional for future infra dependencies)
-- Make (optional)
+- `pip` (or `uv`) and virtual environment support
+- Optional: Docker and Docker Compose for future infra workflows
 
-## 2. Environment variables
+## Installation
 
-Create a `.env` file from `.env.example`:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+```
+
+## Environment Configuration
+
+Copy environment defaults:
 
 ```bash
 cp .env.example .env
 ```
 
-Then fill required values.
+Set values as needed for local development.
 
-## 3. Recommended local run model
+## Required Environment Variables
 
-### Portal Service
+- `DATABASE_SERVICE_URL`: portal-service upstream URL for database-service.
+- `PORTAL_HOST`: host interface for portal-service.
+- `PORTAL_PORT`: port for portal-service API.
+- `DATABASE_HOST`: host interface for database-service.
+- `DATABASE_PORT`: port for database-service API.
+- `DATABASE_URL`: persistence DSN (currently defaults to in-memory SQLite).
 
-- Runtime: Reflex
-- Port: `3000` (or Reflex default in your setup)
-- Depends on: Database Service base URL and service token
+## Recommended Local Run Model
 
-### Database Service
+Start each service in a separate terminal.
 
-- Runtime: Python API server (FastAPI/Flask-compatible architecture)
-- Port: `8000`
-- Initial persistence: in-memory SQLite (`sqlite:///:memory:`)
-
-## 4. Suggested boot sequence
-
-1. Start Database Service.
-2. Run migrations/bootstrap hooks (if enabled).
-3. Start Portal Service.
-4. Open Portal and execute tenant registration flow.
-
-## 5. Health checks (expected endpoints)
-
-- Database Service: `GET /health`
-- Portal Service: `GET /health`
-
-Both should return service identity + environment + dependency status.
-
-## 6. Development checks
-
-Once code is scaffolded, standardize the following checks:
+### 1) database-service
 
 ```bash
-# Lint
-ruff check .
-
-# Format
-ruff format .
-
-# Type check
-pyright
-
-# Tests
-pytest
+uvicorn services.database_service.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-## 7. Troubleshooting baseline
+### 2) portal-service API
 
-- If tenant provisioning fails, inspect correlation IDs in both service logs.
-- If connection validation fails, verify host/port secrets in Portal config payload.
-- If tenant data leaks across requests, audit tenant middleware and repository filters.
+```bash
+DATABASE_SERVICE_URL=http://127.0.0.1:8001 \
+uvicorn services.portal_service.main:api --host 0.0.0.0 --port 8000 --reload
+```
 
-## 8. Migration guidance (SQLite -> persistent DB)
+### 3) Optional Reflex UI
 
-When moving off in-memory SQLite:
+```bash
+reflex run
+```
 
-1. Switch to file-backed SQLite in development.
-2. Introduce migration tooling and schema versioning.
-3. Validate tenant-specific unique constraints.
-4. Add data retention and backup strategy before production DB adoption.
+## Health Checks
+
+- `GET http://127.0.0.1:8000/health` (portal-service)
+- `GET http://127.0.0.1:8001/health` (database-service)
+
+## Test Suite
+
+```bash
+pytest -q
+```
