@@ -1,0 +1,15 @@
+services:
+  sqlserver:
+    image: 'mcr.microsoft.com/mssql/server:2022-latest'
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: '${MSSQL_SA_PASSWORD}'
+      TZ: Europe/Lisbon
+    ports:
+      - '1433:1433'
+    volumes:
+      - 'sqlserver_data:/var/opt/mssql'
+volumes:
+  sqlserver_data: null
