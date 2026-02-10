@@ -1,76 +1,61 @@
-# Architecture (Baseline v0.1)
+# Architecture
 
-## Services
+## Service responsibilities
 
-### 1) portal-service (Reflex)
+## database-service (`services/database_service`)
 
-Responsibilities:
-- Tenant registration/list/get (`/api/tenants`)
-- Resolve tenant context from `X-Tenant-ID`
-- Proxy tenant-scoped CRUD calls to database-service (`/api/{entity}`)
-- Provide simple Reflex UI for manual smoke testing
+- Hosts tenant-scoped CRUD endpoints: `/v1/{entity}` and `/v1/{entity}/{id}`.
+- Bootstraps schema at startup.
+- Enforces tenant header with dependency (`X-Tenant-ID`).
+- Enforces tenant isolation in all queries.
+- Validates tenant-safe foreign-key references.
 
-Isolation guard:
-- Middleware stores `request.state.tenant_id`
-- Proxy handlers reject missing tenant header before forwarding
+## portal-service (`services/portal_service`)
 
-### 2) database-service (FastAPI + SQLite in-memory)
+- Hosts tenant management endpoints:
+  - `POST /api/tenants`
+  - `GET /api/tenants`
+  - `GET /api/tenants/{tenant_id}`
+- Proxies CRUD to database-service while forwarding tenant header.
+- Normalizes upstream HTTP errors and handles invalid JSON payloads.
 
-Responsibilities:
-- Bootstrap schema on startup
-- CRUD endpoints for: `categories`, `products`, `tables`, `tabs`, `orders`, `order-items`, `payments`
-- Apply strict tenant filter in every list/get/update/delete path
+## Request flow
 
-Isolation guard:
-- Mandatory `X-Tenant-ID` dependency
-- Every query includes `model.tenant_id == tenant_id`
-- Cross-tenant access returns `TENANT_SCOPE_VIOLATION`
+1. Client sends request to portal endpoint.
+2. Portal reads `X-Tenant-ID` from request middleware state.
+3. Portal forwards request to database-service through HTTPX.
+4. Database-service applies tenant filter in SQLAlchemy query.
+5. Response returns through portal to caller.
 
-## API contract
+## Data model overview
 
-### Tenant propagation
-- Header: `X-Tenant-ID: <tenant-uuid-or-slug>`
-- Required on all tenant-scoped CRUD endpoints
+Entities:
 
-### Portal API
-- `POST /api/tenants` -> `{ data: { id, name, created_at } }`
-- `GET /api/tenants` -> `{ items: [...] }`
-- `GET /api/tenants/{tenant_id}` -> `{ data: ... }`
-- `GET|POST /api/{entity}` -> proxied to database-service
-- `GET|PUT|DELETE /api/{entity}/{id}` -> proxied to database-service
+- `categories`
+- `products`
+- `tables`
+- `tabs`
+- `orders`
+- `order-items`
+- `payments`
 
-### Database API
-- `POST /v1/{entity}` with `{ data: {...} }`
-- `GET /v1/{entity}`
-- `GET /v1/{entity}/{id}`
-- `PUT /v1/{entity}/{id}` with `{ data: {...} }`
-- `DELETE /v1/{entity}/{id}`
+Shared columns on all models:
 
-### Error format
-
-```json
-{
-  "error": "TENANT_SCOPE_VIOLATION",
-  "message": "Record not found for tenant scope.",
-  "details": null,
-  "timestamp": "2026-01-01T00:00:00Z"
-}
-```
-
-## Data model notes
-
-All core tables contain:
 - `id`
 - `tenant_id`
 - `created_at`
 - `updated_at`
 
-This shared shape makes tenant filtering uniform and hard to bypass in normal API usage.
+## Design choices and tradeoffs
 
-## Persistence migration path
+- **Header-based tenancy**: explicit and easy to trace, but clients must always set headers.
+- **Generic entity routes**: compact service code, but weaker static typing per entity payload.
+- **In-memory SQLite**: fast for tests/dev, but not persistent and not production-ready.
+- **Portal in-memory tenant registry**: simple bootstrap, but ephemeral and not shared across instances.
 
-To move from in-memory SQLite:
-1. Replace SQLAlchemy URL with persistent SQLite/PostgreSQL.
-2. Introduce Alembic migrations.
-3. Keep tenant filter contract unchanged.
-4. Add DB-level constraints/indexes (`tenant_id`, composite uniques).
+## Security and correctness controls
+
+- Tenant header required on all tenant-owned operations.
+- Cross-tenant reads/updates/deletes blocked (`TENANT_SCOPE_VIOLATION`).
+- Cross-tenant foreign-key links blocked (`INVALID_REFERENCE`).
+- Unknown entities return structured error (`UNKNOWN_ENTITY`).

@@ -1,55 +1,60 @@
-# Setup & Run
+# Setup Guide
 
-## Prerequisites
-- Python 3.11+
-- pip / venv
-- Node runtime only if running Reflex frontend dev server
+## 1) Prerequisites
 
-## Install
+- Python **3.11+**
+- `pip`
+- Optional: `pyenv` for version pinning
+
+## 2) Environment setup
 
 ```bash
+pyenv local 3.11.14  # optional
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-## Run database-service
+## 3) Environment variables
+
+Copy and edit from `.env.example`:
 
 ```bash
-uvicorn services.database_service.app:app --host 0.0.0.0 --port 8001 --reload
+cp .env.example .env
 ```
 
-## Run portal-service API
+Key variables:
+
+- `PORTAL_DATABASE_SERVICE_URL`: where portal calls database-service.
+- `DATABASE_URL`: configured as SQLite in-memory by default for local dev notes.
+- `PORTAL_PORT`, `DATABASE_PORT`: runtime ports.
+
+## 4) Run services locally
 
 ```bash
-uvicorn services.portal_service.app:app.api --host 0.0.0.0 --port 8000 --reload
+# terminal A
+uvicorn services.database_service.app:app --host 0.0.0.0 --port 8001
+
+# terminal B
+uvicorn services.portal_service.app:app --host 0.0.0.0 --port 8000
 ```
 
-## Run Reflex frontend
+## 5) Verify basic behavior
 
 ```bash
-reflex run --frontend-only --frontend-port 3000
+curl -s http://127.0.0.1:8001/health
+curl -s http://127.0.0.1:8000/
 ```
 
-Open: `http://127.0.0.1:3000`
+## 6) Database notes (SQLite in-memory)
 
-## Test suite
+- Database-service uses isolated in-memory SQLite per process using `StaticPool`.
+- Test runs are deterministic because each app instance starts from a fresh schema.
+- Data is ephemeral and resets when process exits.
 
-```bash
-pytest
-```
+## 7) Troubleshooting
 
-## Manual multi-tenant checks
-
-```bash
-# create two tenants
-TENANT_A=$(curl -s -X POST http://127.0.0.1:8000/api/tenants -H 'content-type: application/json' -d '{"name":"A"}' | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["id"])')
-TENANT_B=$(curl -s -X POST http://127.0.0.1:8000/api/tenants -H 'content-type: application/json' -d '{"name":"B"}' | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["id"])')
-
-# A creates one product
-curl -s -X POST http://127.0.0.1:8000/api/products -H "X-Tenant-ID: ${TENANT_A}" -H 'content-type: application/json' -d '{"data":{"name":"A-only","price":1}}'
-
-# A sees 1 product, B sees 0
-curl -s http://127.0.0.1:8000/api/products -H "X-Tenant-ID: ${TENANT_A}"
-curl -s http://127.0.0.1:8000/api/products -H "X-Tenant-ID: ${TENANT_B}"
-```
+- **`MISSING_TENANT`**: include `X-Tenant-ID` header.
+- **`INVALID_REFERENCE`**: you referenced an ID from another tenant scope.
+- **`UNKNOWN_ENTITY`**: entity path is not in supported set.
+- **Port in use**: switch `--port` or stop prior process.

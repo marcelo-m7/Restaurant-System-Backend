@@ -3,6 +3,7 @@
 .env.development.local
 !.env.example
 *.png
+docs/audit_evidence/*.png
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

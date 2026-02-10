@@ -30,8 +30,12 @@ def test_crud_lifecycle_for_key_entities() -> None:
     client = TestClient(create_db_app())
     headers = {"X-Tenant-ID": "tenant-crud"}
 
-    category = client.post("/v1/categories", headers=headers, json={"data": {"name": "Drinks"}}).json()["data"]
-    table = client.post("/v1/tables", headers=headers, json={"data": {"name": "T1", "seats": 4}}).json()["data"]
+    category = client.post(
+        "/v1/categories", headers=headers, json={"data": {"name": "Drinks"}}
+    ).json()["data"]
+    table = client.post(
+        "/v1/tables", headers=headers, json={"data": {"name": "T1", "seats": 4}}
+    ).json()["data"]
 
     product = client.post(
         "/v1/products",
@@ -39,8 +43,12 @@ def test_crud_lifecycle_for_key_entities() -> None:
         json={"data": {"name": "Cola", "price": 4.5, "category_id": category["id"]}},
     ).json()["data"]
 
-    tab = client.post("/v1/tabs", headers=headers, json={"data": {"table_id": table["id"], "status": "open"}}).json()["data"]
-    order = client.post("/v1/orders", headers=headers, json={"data": {"tab_id": tab["id"], "status": "pending"}}).json()["data"]
+    tab = client.post(
+        "/v1/tabs", headers=headers, json={"data": {"table_id": table["id"], "status": "open"}}
+    ).json()["data"]
+    order = client.post(
+        "/v1/orders", headers=headers, json={"data": {"tab_id": tab["id"], "status": "pending"}}
+    ).json()["data"]
     order_item = client.post(
         "/v1/order-items",
         headers=headers,
@@ -52,10 +60,42 @@ def test_crud_lifecycle_for_key_entities() -> None:
         json={"data": {"order_id": order["id"], "amount": 9.0, "method": "card"}},
     ).json()["data"]
 
-    updated = client.put(f"/v1/products/{product['id']}", headers=headers, json={"data": {"price": 5.0}})
+    updated = client.put(
+        f"/v1/products/{product['id']}", headers=headers, json={"data": {"price": 5.0}}
+    )
     assert updated.status_code == 200
     assert updated.json()["data"]["price"] == 5.0
 
     deleted = client.delete(f"/v1/order-items/{order_item['id']}", headers=headers)
     assert deleted.status_code == 200
     assert payment["amount"] == 9.0
+
+
+def test_create_product_rejects_cross_tenant_category_reference() -> None:
+    client = TestClient(create_db_app())
+
+    category = client.post(
+        "/v1/categories",
+        headers={"X-Tenant-ID": "tenant-a"},
+        json={"data": {"name": "Shared?"}},
+    ).json()["data"]
+
+    response = client.post(
+        "/v1/products",
+        headers={"X-Tenant-ID": "tenant-b"},
+        json={"data": {"name": "Leak", "price": 10.0, "category_id": category["id"]}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["error"] == "INVALID_REFERENCE"
+
+
+def test_unknown_entity_has_consistent_error_schema() -> None:
+    client = TestClient(create_db_app())
+
+    response = client.get("/v1/not-a-real-entity", headers={"X-Tenant-ID": "tenant-a"})
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["error"] == "UNKNOWN_ENTITY"
+    assert "supported_entities" in detail["details"]

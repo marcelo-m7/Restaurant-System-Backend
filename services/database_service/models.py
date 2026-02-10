@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -15,9 +15,13 @@ class Base(DeclarativeBase):
 class TenantScopedMixin:
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -80,6 +84,14 @@ ENTITY_MODELS: dict[str, type[Base]] = {
     "orders": Order,
     "order-items": OrderItem,
     "payments": Payment,
+}
+
+ENTITY_FOREIGN_KEYS: dict[str, dict[str, str]] = {
+    "products": {"category_id": "categories"},
+    "tabs": {"table_id": "tables"},
+    "orders": {"tab_id": "tabs"},
+    "order-items": {"order_id": "orders", "product_id": "products"},
+    "payments": {"order_id": "orders"},
 }
 
 

@@ -1,101 +1,77 @@
-# Restaurant System Backend (Baseline v0.1)
+# Restaurant System Backend
 
-Minimal two-microservice baseline with strict multi-tenant isolation:
+A two-service, multi-tenant backend for restaurant operations.
 
-- **portal-service**: Reflex app + tenant management + proxy API.
-- **database-service**: FastAPI + SQLite (in-memory shared cache) + tenant-scoped CRUD.
+- **database-service**: FastAPI + SQLAlchemy CRUD API with tenant isolation.
+- **portal-service**: FastAPI portal API that manages tenants and proxies CRUD calls to database-service.
 
-## Why `X-Tenant-ID` header?
+> Tenant scope is enforced with the `X-Tenant-ID` header on all tenant-owned entity endpoints.
 
-This baseline uses `X-Tenant-ID` for tenant propagation because it is explicit, easy to trace in logs, and portable across UI/API requests without path coupling. Every tenant-owned CRUD operation requires this header.
+## Architecture at a glance
 
-## Project structure
+- `services/database_service`: own API + in-memory SQLite schema bootstrap.
+- `services/portal_service`: tenant endpoints + proxy to database-service using HTTPX.
+- `tests/`: service-level and integration tests.
 
-```text
-services/
-  database_service/
-    app.py
-    models.py
-    schemas.py
-  portal_service/
-    app.py
-    client.py
-tests/
-  test_database_service.py
-  test_portal_integration.py
-ARCHITECTURE.md
-SETUP.md
-pyproject.toml
-```
+See [ARCHITECTURE.md](ARCHITECTURE.md) for full flow details.
 
-## Quick start
+## Quickstart
 
 ```bash
+pyenv local 3.11.14  # or any Python 3.11+
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-Start services in two terminals:
+Run services:
 
 ```bash
-# Terminal A
+# terminal 1
 uvicorn services.database_service.app:app --host 0.0.0.0 --port 8001
 
-# Terminal B (portal API + Reflex frontend backend)
-uvicorn services.portal_service.app:app.api --host 0.0.0.0 --port 8000
+# terminal 2
+uvicorn services.portal_service.app:app --host 0.0.0.0 --port 8000
 ```
 
-Optional Reflex frontend dev server:
+Health checks:
 
 ```bash
-reflex run --frontend-only --frontend-port 3000
+curl -s http://127.0.0.1:8001/health
+curl -s http://127.0.0.1:8000/
 ```
 
-## cURL flow
+## Multi-tenancy model (`X-Tenant-ID`)
 
-1. Create a tenant in portal service:
+- Required by `database-service` on `/v1/*` routes.
+- Required by `portal-service` on proxied `/api/{entity}` routes.
+- Data is isolated by row-level `tenant_id` checks for read/write/delete.
+- Foreign-key references are validated to prevent cross-tenant linkage.
+
+## Common workflow
 
 ```bash
-curl -s -X POST http://127.0.0.1:8000/api/tenants \
+# Create tenant
+TENANT_ID=$(curl -s -X POST http://127.0.0.1:8000/api/tenants \
   -H 'content-type: application/json' \
-  -d '{"name":"tenant-a"}'
-```
+  -d '{"name":"Tenant A"}' | python -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')
 
-2. Use tenant id to create product through portal proxy:
-
-```bash
+# Create product for tenant
 curl -s -X POST http://127.0.0.1:8000/api/products \
-  -H 'X-Tenant-ID: <tenant-id>' \
+  -H "X-Tenant-ID: ${TENANT_ID}" \
   -H 'content-type: application/json' \
-  -d '{"data":{"name":"Latte","price":5.5}}'
+  -d '{"data":{"name":"Espresso","price":3.5}}'
+
+# List products for tenant
+curl -s http://127.0.0.1:8000/api/products -H "X-Tenant-ID: ${TENANT_ID}"
 ```
 
-3. List products for same tenant:
+## Developer quality checks
 
 ```bash
-curl -s http://127.0.0.1:8000/api/products -H 'X-Tenant-ID: <tenant-id>'
+ruff check .
+mypy .
+pytest --cov=services --cov=tests --cov-report=term-missing
 ```
 
-4. Cross-tenant access is blocked (404 scope violation):
-
-```bash
-curl -i http://127.0.0.1:8000/api/products/<product-id> -H 'X-Tenant-ID: another-tenant'
-```
-
-## Tests
-
-```bash
-pytest
-```
-
-Coverage includes:
-
-- tenant isolation A vs B
-- cross-tenant read denial
-- CRUD lifecycle across core entities
-- portal -> database tenant-context forwarding
-
-## Next step for persistence
-
-Swap in-memory SQLite with persistent DB by changing SQLAlchemy URL and introducing migrations (Alembic). Existing repository/API contracts keep tenant checks independent of engine choice.
+See [docs/TESTING.md](docs/TESTING.md) for failure interpretation and troubleshooting.
